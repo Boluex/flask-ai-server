@@ -78,6 +78,53 @@ def supabase_insert_session(data: dict):
         return False
 
 
+# def call_mistral_ai(prompt: str) -> dict:
+#     """Call Mistral AI API with server-side key"""
+#     try:
+#         resp = requests.post(
+#             "https://api.mistral.ai/v1/chat/completions",
+#             headers={"Authorization": f"Bearer {MISTRAL_API_KEY}"},
+#             json={
+#                 "model": "mistral-small-latest",
+#                 "messages": [{"role": "user", "content": prompt}],
+#                 "temperature": 0.3,
+#                 "max_tokens": 1500
+#             },
+#             timeout=30
+#         )
+        
+#         if resp.status_code != 200:
+#             return {"error": f"Mistral API error: {resp.status_code}"}
+        
+#         response_data = resp.json()
+#         if "choices" not in response_data or len(response_data["choices"]) == 0:
+#             return {"error": "Invalid Mistral response"}
+        
+#         text = response_data["choices"][0]["message"]["content"].strip()
+        
+#         # Remove markdown code blocks
+#         if text.startswith("```json"):
+#             text = text[7:]
+#         if text.startswith("```"):
+#             text = text[3:]
+#         if text.endswith("```"):
+#             text = text[:-3]
+#         text = text.strip()
+        
+#         try:
+#             plan = json.loads(text)
+#             return plan
+#         except json.JSONDecodeError:
+#             return {"error": "Failed to parse AI response"}
+            
+#     except requests.exceptions.Timeout:
+#         return {"error": "Mistral API timeout"}
+#     except Exception as e:
+#         return {"error": f"Unexpected error: {str(e)}"}
+
+
+
+
 def call_mistral_ai(prompt: str) -> dict:
     """Call Mistral AI API with server-side key"""
     try:
@@ -88,39 +135,155 @@ def call_mistral_ai(prompt: str) -> dict:
                 "model": "mistral-small-latest",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
-                "max_tokens": 1500
+                "max_tokens": 2000,  # Increased from 1500
+                "response_format": {"type": "json_object"}  # Force JSON response
             },
-            timeout=30
+            timeout=45  # Increased timeout
         )
         
         if resp.status_code != 200:
+            print(f"❌ Mistral API error: {resp.status_code}")
+            print(f"Response: {resp.text}")
             return {"error": f"Mistral API error: {resp.status_code}"}
         
         response_data = resp.json()
         if "choices" not in response_data or len(response_data["choices"]) == 0:
+            print(f"❌ Invalid Mistral response structure")
             return {"error": "Invalid Mistral response"}
         
         text = response_data["choices"][0]["message"]["content"].strip()
         
-        # Remove markdown code blocks
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
+        # Log the raw response for debugging
+        print(f"🤖 Mistral raw response (first 500 chars):\n{text[:500]}")
+        
+        # Clean up the response - remove markdown code blocks
+        if "```json" in text:
+            text = text.split("```json")[1].split("```")[0]
+        elif "```" in text:
+            text = text.split("```")[1].split("```")[0]
+        
         text = text.strip()
         
+        # Try to find JSON object in the text
+        if not text.startswith("{"):
+            # Look for the first { and last }
+            start = text.find("{")
+            end = text.rfind("}")
+            if start != -1 and end != -1:
+                text = text[start:end+1]
+        
+        # Try to parse the JSON
         try:
             plan = json.loads(text)
+            print(f"✅ Successfully parsed JSON plan with {len(plan.get('steps', []))} steps")
             return plan
-        except json.JSONDecodeError:
-            return {"error": "Failed to parse AI response"}
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON parse error: {e}")
+            print(f"Problematic text (first 300 chars): {text[:300]}")
+            
+            # Try to fix common JSON issues
+            try:
+                # Replace single quotes with double quotes
+                text = text.replace("'", '"')
+                # Remove trailing commas
+                import re
+                text = re.sub(r',(\s*[}\]])', r'\1', text)
+                plan = json.loads(text)
+                print(f"✅ Fixed and parsed JSON")
+                return plan
+            except:
+                print(f"❌ Could not fix JSON")
+                return {"error": "Failed to parse AI response - invalid JSON format"}
             
     except requests.exceptions.Timeout:
+        print(f"❌ Mistral API timeout")
         return {"error": "Mistral API timeout"}
     except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
         return {"error": f"Unexpected error: {str(e)}"}
+
+
+def sanitize_plan(plan: dict, issue: str) -> dict:
+    """Validate and sanitize the AI-generated plan"""
+    
+    # If plan is still a string, try to parse it
+    if isinstance(plan, str):
+        try:
+            plan = json.loads(plan)
+        except:
+            return {
+                "software": "Unknown",
+                "issue": issue,
+                "summary": "Failed to parse AI response",
+                "steps": [{"description": "AI returned invalid format", "command": "echo Invalid response", "requires_sudo": False}],
+                "estimated_time_minutes": 5,
+                "needs_reboot": False
+            }
+    
+    # Check for error in plan
+    if "error" in plan:
+        return {
+            "software": "Unknown",
+            "issue": issue,
+            "summary": "AI service error",
+            "steps": [{"description": plan["error"], "command": "echo AI error occurred", "requires_sudo": False}],
+            "estimated_time_minutes": 5,
+            "needs_reboot": False
+        }
+    
+    # Ensure all required fields exist
+    sanitized = {
+        "software": plan.get("software", "Unknown"),
+        "issue": plan.get("issue", issue),
+        "summary": plan.get("summary", "Repair steps"),
+        "steps": [],
+        "estimated_time_minutes": plan.get("estimated_time_minutes", 10),
+        "needs_reboot": plan.get("needs_reboot", False)
+    }
+    
+    # Validate and sanitize steps
+    raw_steps = plan.get("steps", [])
+    if not raw_steps:
+        sanitized["steps"] = [{
+            "description": "No repair steps generated",
+            "command": "echo No steps available",
+            "requires_sudo": False
+        }]
+    else:
+        for step in raw_steps[:6]:  # Max 6 steps
+            if isinstance(step, dict):
+                # Ensure command is never empty
+                command = str(step.get("command", "")).strip()
+                if not command:
+                    command = f"echo {step.get('description', 'Manual step')[:50]}"
+                
+                sanitized["steps"].append({
+                    "description": str(step.get("description", "No description"))[:300],
+                    "command": command[:500],
+                    "requires_sudo": bool(step.get("requires_sudo", False))
+                })
+            elif isinstance(step, str):
+                # If step is just a string, make it a proper dict
+                sanitized["steps"].append({
+                    "description": step[:300],
+                    "command": f"echo {step[:50]}",
+                    "requires_sudo": False
+                })
+    
+    # Validate numeric fields
+    try:
+        sanitized["estimated_time_minutes"] = max(1, min(120, int(sanitized["estimated_time_minutes"])))
+    except (ValueError, TypeError):
+        sanitized["estimated_time_minutes"] = 10
+    
+    sanitized["needs_reboot"] = bool(sanitized.get("needs_reboot", False))
+    
+    return sanitized
+
+
+
 
 
 def build_repair_prompt(issue: str, system_info: dict, search_results: list, file_info: dict = None) -> str:
@@ -144,101 +307,119 @@ Application File Information:
     
     needs_reboot = any(kw in issue.lower() for kw in ['reboot', 'restart', 'shutdown', 'boot', 'startup'])
     
-    prompt = f"""You are a senior tech support engineer.
-Generate a safe, step-by-step repair plan for: "{issue}"
+    prompt = f"""
+You are a computer repair technician AI. You MUST respond with ONLY a valid JSON object, no other text.
 
-System Info: {system_info.get('os', 'Unknown')} ({system_info.get('platform', 'Unknown')})
+USER'S ISSUE: {issue}
 
-{file_context}
+SYSTEM: {os_type} - {system_info.get('platform', 'Unknown')}
 
-Relevant fixes from online research:
-{context}
+SEARCH RESULTS: 
+{chr(10).join(f"- {result}" for result in search_results[:3]) if search_results else "None"}
 
-CRITICAL: Return ONLY valid JSON in this EXACT format with NO extra text:
+{f"FILE: {file_info.get('filename', 'N/A')} at {file_info.get('path', 'N/A')}" if file_info else ""}
+
+REQUIRED JSON OUTPUT FORMAT (respond with ONLY this, no markdown, no explanations):
 {{
-  "software": "software name or Unknown",
+  "software": "software name",
   "issue": "{issue}",
-  "summary": "One-line summary of the repair plan",
+  "summary": "Brief summary of repair approach",
   "steps": [
     {{
-      "description": "Clear description of what this step does",
-      "command": "exact shell command to run OR empty string if manual step",
-      "requires_sudo": true or false
+      "description": "Step description",
+      "command": "exact command (never empty or null)",
+      "requires_sudo": true
     }}
   ],
-  "critical": true or false,
-  "estimated_time_minutes": number,
-  "needs_reboot": {str(needs_reboot).lower()}
+  "estimated_time_minutes": 15,
+  "needs_reboot": false
 }}
 
-IMPORTANT RULES:
-1. Maximum 6 steps
-2. Each step MUST have "description", "command", and "requires_sudo" fields
-3. For commands that might fail safely (like pkill), add "|| true" at the end
-4. Use SIMPLE commands - avoid complex shell pipelines with nested quotes
-5. For checking missing libraries, use: ldd /path/to/binary 2>/dev/null || echo No issues found
-6. If a step is manual (like "restart the application"), set command to empty string ""
-7. Be concise but specific
-8. Avoid destructive commands
-9. Return ONLY the JSON object, no markdown formatting, no extra text"""
+COMMANDS FOR {os_type}:
+Windows:
+- ipconfig /flushdns (flush DNS, admin)
+- netsh winsock reset (reset network, admin)
+- sfc /scannow (system file check, admin)
+- cleanmgr /sagerun:1 (disk cleanup, admin)
+- defrag C: /O (defragment, admin)
+- del /q /f /s %TEMP%\\* (clear temp files)
+- net stop ServiceName (stop service, admin)
+- net start ServiceName (start service, admin)
+
+Linux:
+- sudo apt update && sudo apt upgrade -y
+- sudo systemctl restart service_name
+- sudo apt clean
+- sudo apt --fix-broken install
+
+RULES:
+1. Respond with ONLY the JSON object
+2. Every step MUST have a non-empty "command" field
+3. If informational only, use: "echo Step information here"
+4. Max 6 steps
+5. Match commands to OS: {os_type}
+6. Be specific and actionable
+
+Generate JSON for: {issue}
+"""
     
     return prompt
 
 
-def sanitize_plan(plan: dict, issue: str) -> dict:
-    """Validate and sanitize the AI-generated plan"""
-    required_fields = ["summary", "steps", "estimated_time_minutes", "needs_reboot"]
-    for field in required_fields:
-        if field not in plan:
-            return {
-                "software": "Unknown",
-                "issue": issue,
-                "summary": "Incomplete AI response",
-                "steps": [{"description": "AI response missing required information.", "command": "", "requires_sudo": False}],
-                "estimated_time_minutes": 5,
-                "needs_reboot": False
-            }
+# def sanitize_plan(plan: dict, issue: str) -> dict:
+#     """Validate and sanitize the AI-generated plan"""
+#     required_fields = ["summary", "steps", "estimated_time_minutes", "needs_reboot"]
+#     for field in required_fields:
+#         if field not in plan:
+#             return {
+#                 "software": "Unknown",
+#                 "issue": issue,
+#                 "summary": "Incomplete AI response",
+#                 "steps": [{"description": "AI response missing required information.", "command": "", "requires_sudo": False}],
+#                 "estimated_time_minutes": 5,
+#                 "needs_reboot": False
+#             }
     
-    # Ensure required fields exist
-    if "software" not in plan:
-        plan["software"] = "Unknown"
-    if "issue" not in plan:
-        plan["issue"] = issue
+#     # Ensure required fields exist
+#     if "software" not in plan:
+#         plan["software"] = "Unknown"
+#     if "issue" not in plan:
+#         plan["issue"] = issue
     
-    # Sanitize fields
-    plan["software"] = str(plan["software"])[:100]
-    plan["issue"] = str(plan["issue"])[:200]
-    plan["summary"] = str(plan["summary"])[:200]
+#     # Sanitize fields
+#     plan["software"] = str(plan["software"])[:100]
+#     plan["issue"] = str(plan["issue"])[:200]
+#     plan["summary"] = str(plan["summary"])[:200]
     
-    # Validate steps
-    if not isinstance(plan["steps"], list):
-        plan["steps"] = [{"description": "Invalid step format", "command": "", "requires_sudo": False}]
-    else:
-        sanitized_steps = []
-        for step in plan["steps"][:6]:
-            if isinstance(step, dict):
-                sanitized_step = {
-                    "description": str(step.get("description", "No description"))[:300],
-                    "command": str(step.get("command", ""))[:500],
-                    "requires_sudo": bool(step.get("requires_sudo", False))
-                }
-                sanitized_steps.append(sanitized_step)
+#     # Validate steps
+#     if not isinstance(plan["steps"], list):
+#         plan["steps"] = [{"description": "Invalid step format", "command": "", "requires_sudo": False}]
+#     else:
+#         sanitized_steps = []
+#         for step in plan["steps"][:6]:
+#             if isinstance(step, dict):
+#                 sanitized_step = {
+#                     "description": str(step.get("description", "No description"))[:300],
+#                     "command": str(step.get("command", ""))[:500],
+#                     "requires_sudo": bool(step.get("requires_sudo", False))
+#                 }
+#                 sanitized_steps.append(sanitized_step)
         
-        if not sanitized_steps:
-            sanitized_steps = [{"description": "No valid steps received", "command": "", "requires_sudo": False}]
+#         if not sanitized_steps:
+#             sanitized_steps = [{"description": "No valid steps received", "command": "", "requires_sudo": False}]
         
-        plan["steps"] = sanitized_steps
+#         plan["steps"] = sanitized_steps
     
-    # Validate numeric fields
-    try:
-        plan["estimated_time_minutes"] = max(1, min(120, int(plan["estimated_time_minutes"])))
-    except (ValueError, TypeError):
-        plan["estimated_time_minutes"] = 10
+#     # Validate numeric fields
+#     try:
+#         plan["estimated_time_minutes"] = max(1, min(120, int(plan["estimated_time_minutes"])))
+#     except (ValueError, TypeError):
+#         plan["estimated_time_minutes"] = 10
     
-    plan["needs_reboot"] = bool(plan.get("needs_reboot", False))
-    plan["critical"] = bool(plan.get("critical", False))
+#     plan["needs_reboot"] = bool(plan.get("needs_reboot", False))
+#     plan["critical"] = bool(plan.get("critical", False))
     
-    return plan
+#     return plan
 
 
 # API Endpoints

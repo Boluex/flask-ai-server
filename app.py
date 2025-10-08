@@ -78,51 +78,6 @@ def supabase_insert_session(data: dict):
         return False
 
 
-# def call_mistral_ai(prompt: str) -> dict:
-#     """Call Mistral AI API with server-side key"""
-#     try:
-#         resp = requests.post(
-#             "https://api.mistral.ai/v1/chat/completions",
-#             headers={"Authorization": f"Bearer {MISTRAL_API_KEY}"},
-#             json={
-#                 "model": "mistral-small-latest",
-#                 "messages": [{"role": "user", "content": prompt}],
-#                 "temperature": 0.3,
-#                 "max_tokens": 1500
-#             },
-#             timeout=30
-#         )
-        
-#         if resp.status_code != 200:
-#             return {"error": f"Mistral API error: {resp.status_code}"}
-        
-#         response_data = resp.json()
-#         if "choices" not in response_data or len(response_data["choices"]) == 0:
-#             return {"error": "Invalid Mistral response"}
-        
-#         text = response_data["choices"][0]["message"]["content"].strip()
-        
-#         # Remove markdown code blocks
-#         if text.startswith("```json"):
-#             text = text[7:]
-#         if text.startswith("```"):
-#             text = text[3:]
-#         if text.endswith("```"):
-#             text = text[:-3]
-#         text = text.strip()
-        
-#         try:
-#             plan = json.loads(text)
-#             return plan
-#         except json.JSONDecodeError:
-#             return {"error": "Failed to parse AI response"}
-            
-#     except requests.exceptions.Timeout:
-#         return {"error": "Mistral API timeout"}
-#     except Exception as e:
-#         return {"error": f"Unexpected error: {str(e)}"}
-
-
 
 
 def call_mistral_ai(prompt: str) -> dict:
@@ -366,60 +321,6 @@ Generate JSON for: {issue}
     return prompt
 
 
-# def sanitize_plan(plan: dict, issue: str) -> dict:
-#     """Validate and sanitize the AI-generated plan"""
-#     required_fields = ["summary", "steps", "estimated_time_minutes", "needs_reboot"]
-#     for field in required_fields:
-#         if field not in plan:
-#             return {
-#                 "software": "Unknown",
-#                 "issue": issue,
-#                 "summary": "Incomplete AI response",
-#                 "steps": [{"description": "AI response missing required information.", "command": "", "requires_sudo": False}],
-#                 "estimated_time_minutes": 5,
-#                 "needs_reboot": False
-#             }
-    
-#     # Ensure required fields exist
-#     if "software" not in plan:
-#         plan["software"] = "Unknown"
-#     if "issue" not in plan:
-#         plan["issue"] = issue
-    
-#     # Sanitize fields
-#     plan["software"] = str(plan["software"])[:100]
-#     plan["issue"] = str(plan["issue"])[:200]
-#     plan["summary"] = str(plan["summary"])[:200]
-    
-#     # Validate steps
-#     if not isinstance(plan["steps"], list):
-#         plan["steps"] = [{"description": "Invalid step format", "command": "", "requires_sudo": False}]
-#     else:
-#         sanitized_steps = []
-#         for step in plan["steps"][:6]:
-#             if isinstance(step, dict):
-#                 sanitized_step = {
-#                     "description": str(step.get("description", "No description"))[:300],
-#                     "command": str(step.get("command", ""))[:500],
-#                     "requires_sudo": bool(step.get("requires_sudo", False))
-#                 }
-#                 sanitized_steps.append(sanitized_step)
-        
-#         if not sanitized_steps:
-#             sanitized_steps = [{"description": "No valid steps received", "command": "", "requires_sudo": False}]
-        
-#         plan["steps"] = sanitized_steps
-    
-#     # Validate numeric fields
-#     try:
-#         plan["estimated_time_minutes"] = max(1, min(120, int(plan["estimated_time_minutes"])))
-#     except (ValueError, TypeError):
-#         plan["estimated_time_minutes"] = 10
-    
-#     plan["needs_reboot"] = bool(plan.get("needs_reboot", False))
-#     plan["critical"] = bool(plan.get("critical", False))
-    
-#     return plan
 
 
 # API Endpoints
@@ -502,55 +403,7 @@ def validate_token(token):
         return jsonify({"valid": False, "error": "Invalid timestamp"}), 500
 
 
-# @app.route('/generate-plan', methods=['POST'])
-# def generate_plan():
-#     """Generate repair plan using Mistral AI (server-side)"""
-#     token = request.json.get('token')
-#     issue = request.json.get('issue')
-#     system_info = request.json.get('system_info', {})
-#     search_results = request.json.get('search_results', [])
-#     file_info = request.json.get('file_info')
-    
-#     if not token or not issue:
-#         return jsonify({"error": "Token and issue required"}), 400
-    
-#     # Validate token
-#     sess = supabase_get_token(token)
-#     if not sess or not sess["active"]:
-#         return jsonify({"error": "Invalid or inactive session"}), 401
-    
-#     # Check expiration
-#     try:
-#         exp_str = sess["expires_at"].strip()
-#         if exp_str.endswith('Z'):
-#             exp_str = exp_str[:-1] + '+00:00'
-#         exp = datetime.fromisoformat(exp_str)
-#         if datetime.now(timezone.utc) > exp:
-#             return jsonify({"error": "Session expired"}), 403
-#     except:
-#         return jsonify({"error": "Invalid session data"}), 500
-    
-#     # Build prompt and call Mistral
-#     prompt = build_repair_prompt(issue, system_info, search_results, file_info)
-#     raw_plan = call_mistral_ai(prompt)
-    
-#     if "error" in raw_plan:
-#         return jsonify({
-#             "software": "Unknown",
-#             "issue": issue,
-#             "summary": "AI service error",
-#             "steps": [{"description": raw_plan["error"], "command": "", "requires_sudo": False}],
-#             "estimated_time_minutes": 5,
-#             "needs_reboot": False
-#         })
-    
-#     # Sanitize and validate plan
-#     plan = sanitize_plan(raw_plan, issue)
-    
-#     # Save to database
-#     supabase_update_session(token, {"plan": plan})
-    
-#     return jsonify(plan)
+
 @app.route('/generate-plan', methods=['POST'])
 def generate_plan():
     """Generate repair plan using Mistral AI (server-side)"""

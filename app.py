@@ -321,55 +321,6 @@ def validate_token(token):
         return jsonify({"valid": False, "error": "Invalid timestamp"}), 500
 
 
-# @app.route('/generate-plan', methods=['POST'])
-# def generate_plan():
-#     """Generate repair plan using Mistral AI (server-side)"""
-#     token = request.json.get('token')
-#     issue = request.json.get('issue')
-#     system_info = request.json.get('system_info', {})
-#     search_results = request.json.get('search_results', [])
-#     file_info = request.json.get('file_info')
-    
-#     if not token or not issue:
-#         return jsonify({"error": "Token and issue required"}), 400
-    
-#     # Validate token
-#     sess = supabase_get_token(token)
-#     if not sess or not sess["active"]:
-#         return jsonify({"error": "Invalid or inactive session"}), 401
-    
-#     # Check expiration
-#     try:
-#         exp_str = sess["expires_at"].strip()
-#         if exp_str.endswith('Z'):
-#             exp_str = exp_str[:-1] + '+00:00'
-#         exp = datetime.fromisoformat(exp_str)
-#         if datetime.now(timezone.utc) > exp:
-#             return jsonify({"error": "Session expired"}), 403
-#     except:
-#         return jsonify({"error": "Invalid session data"}), 500
-    
-#     # Build prompt and call Mistral
-#     prompt = build_repair_prompt(issue, system_info, search_results, file_info)
-#     raw_plan = call_mistral_ai(prompt)
-    
-#     if "error" in raw_plan:
-#         return jsonify({
-#             "software": "Unknown",
-#             "issue": issue,
-#             "summary": "AI service error",
-#             "steps": [{"description": raw_plan["error"], "command": "", "requires_sudo": False}],
-#             "estimated_time_minutes": 5,
-#             "needs_reboot": False
-#         })
-    
-#     # Sanitize and validate plan
-#     plan = sanitize_plan(raw_plan, issue)
-    
-#     # Save to database
-#     supabase_update_session(token, {"plan": plan})
-    
-#     return jsonify(plan)
 @app.route('/generate-plan', methods=['POST'])
 def generate_plan():
     """Generate repair plan using Mistral AI (server-side)"""
@@ -398,85 +349,8 @@ def generate_plan():
     except:
         return jsonify({"error": "Invalid session data"}), 500
     
-    # Build enhanced prompt with explicit command requirements
-    os_type = system_info.get('os', 'Windows')
-    
-    prompt = f"""
-You are a computer repair technician AI. Generate a detailed repair plan for this issue:
-
-**USER'S ISSUE**: {issue}
-
-**SYSTEM INFO**: {os_type} - {system_info.get('platform', 'Unknown')}
-
-**SEARCH RESULTS**: 
-{chr(10).join(f"- {result}" for result in search_results[:3])}
-
-{f"**FILE INFO**: {file_info.get('filename', 'N/A')} at {file_info.get('path', 'N/A')}" if file_info else ""}
-
-**CRITICAL REQUIREMENTS**:
-Each repair step MUST include:
-1. "description": Clear description of what the step does
-2. "command": The EXACT command to run (NEVER empty, NEVER null)
-3. "requires_sudo": true if needs administrator/root privileges
-
-**OUTPUT FORMAT** (Valid JSON only):
-{{
-  "software": "Detected software name",
-  "issue": "{issue}",
-  "summary": "Brief 1-2 sentence summary of the repair approach",
-  "steps": [
-    {{
-      "description": "Step 1 description",
-      "command": "actual_command_here",
-      "requires_sudo": true
-    }},
-    {{
-      "description": "Step 2 description", 
-      "command": "another_command",
-      "requires_sudo": false
-    }}
-  ],
-  "estimated_time_minutes": 15,
-  "needs_reboot": false
-}}
-
-**COMMON COMMANDS FOR WINDOWS**:
-- Flush DNS: ipconfig /flushdns (admin required)
-- Reset Winsock: netsh winsock reset (admin required)
-- Reset TCP/IP: netsh int ip reset (admin required)
-- System File Check: sfc /scannow (admin required)
-- DISM Repair: DISM /Online /Cleanup-Image /RestoreHealth (admin required)
-- Disk Cleanup: cleanmgr /sagerun:1 (admin required)
-- Defragment: defrag C: /O (admin required)
-- Check Disk: chkdsk C: /f (admin required)
-- Clear Temp: del /q /f /s %TEMP%\\* (no admin)
-- Stop Service: net stop ServiceName (admin required)
-- Start Service: net start ServiceName (admin required)
-- Restart DNS Client: net stop Dnscache && net start Dnscache (admin required)
-
-**COMMON COMMANDS FOR LINUX**:
-- Update packages: sudo apt update && sudo apt upgrade -y
-- Restart service: sudo systemctl restart service_name
-- Clear cache: sudo apt clean
-- Fix broken packages: sudo apt --fix-broken install
-- Remove package: sudo apt remove package_name -y
-
-**COMMON COMMANDS FOR MACOS**:
-- Flush DNS: sudo dscacheutil -flushcache
-- Restart service: sudo launchctl restart service_name
-- Repair permissions: sudo diskutil resetUserPermissions / `id -u`
-
-**IMPORTANT**:
-- Every step MUST have a real command (never empty string or null)
-- If a step is informational only (like "Save your work"), use a command like "echo Informational step"
-- Match commands to the operating system: {os_type}
-- Set needs_reboot to true only if system restart is genuinely required
-- Prioritize executable commands over manual instructions
-
-Generate the complete JSON repair plan for: {issue}
-"""
-    
-    # Call Mistral AI
+    # Build prompt and call Mistral
+    prompt = build_repair_prompt(issue, system_info, search_results, file_info)
     raw_plan = call_mistral_ai(prompt)
     
     if "error" in raw_plan:
@@ -484,26 +358,152 @@ Generate the complete JSON repair plan for: {issue}
             "software": "Unknown",
             "issue": issue,
             "summary": "AI service error",
-            "steps": [{"description": raw_plan["error"], "command": "echo Error occurred", "requires_sudo": False}],
+            "steps": [{"description": raw_plan["error"], "command": "", "requires_sudo": False}],
             "estimated_time_minutes": 5,
             "needs_reboot": False
         })
     
-    # Sanitize and validate plan (ensure all commands are present)
+    # Sanitize and validate plan
     plan = sanitize_plan(raw_plan, issue)
-    
-    # Final validation: ensure no empty commands
-    if "steps" in plan:
-        for step in plan["steps"]:
-            if not step.get("command") or step.get("command").strip() == "":
-                # Provide a default informational command
-                step["command"] = f"echo {step.get('description', 'Manual step')}"
-                step["requires_sudo"] = False
     
     # Save to database
     supabase_update_session(token, {"plan": plan})
     
     return jsonify(plan)
+# @app.route('/generate-plan', methods=['POST'])
+# def generate_plan():
+#     """Generate repair plan using Mistral AI (server-side)"""
+#     token = request.json.get('token')
+#     issue = request.json.get('issue')
+#     system_info = request.json.get('system_info', {})
+#     search_results = request.json.get('search_results', [])
+#     file_info = request.json.get('file_info')
+    
+#     if not token or not issue:
+#         return jsonify({"error": "Token and issue required"}), 400
+    
+#     # Validate token
+#     sess = supabase_get_token(token)
+#     if not sess or not sess["active"]:
+#         return jsonify({"error": "Invalid or inactive session"}), 401
+    
+#     # Check expiration
+#     try:
+#         exp_str = sess["expires_at"].strip()
+#         if exp_str.endswith('Z'):
+#             exp_str = exp_str[:-1] + '+00:00'
+#         exp = datetime.fromisoformat(exp_str)
+#         if datetime.now(timezone.utc) > exp:
+#             return jsonify({"error": "Session expired"}), 403
+#     except:
+#         return jsonify({"error": "Invalid session data"}), 500
+    
+#     # Build enhanced prompt with explicit command requirements
+#     os_type = system_info.get('os', 'Windows')
+    
+#     prompt = f"""
+# You are a computer repair technician AI. Generate a detailed repair plan for this issue:
+
+# **USER'S ISSUE**: {issue}
+
+# **SYSTEM INFO**: {os_type} - {system_info.get('platform', 'Unknown')}
+
+# **SEARCH RESULTS**: 
+# {chr(10).join(f"- {result}" for result in search_results[:3])}
+
+# {f"**FILE INFO**: {file_info.get('filename', 'N/A')} at {file_info.get('path', 'N/A')}" if file_info else ""}
+
+# **CRITICAL REQUIREMENTS**:
+# Each repair step MUST include:
+# 1. "description": Clear description of what the step does
+# 2. "command": The EXACT command to run (NEVER empty, NEVER null)
+# 3. "requires_sudo": true if needs administrator/root privileges
+
+# **OUTPUT FORMAT** (Valid JSON only):
+# {{
+#   "software": "Detected software name",
+#   "issue": "{issue}",
+#   "summary": "Brief 1-2 sentence summary of the repair approach",
+#   "steps": [
+#     {{
+#       "description": "Step 1 description",
+#       "command": "actual_command_here",
+#       "requires_sudo": true
+#     }},
+#     {{
+#       "description": "Step 2 description", 
+#       "command": "another_command",
+#       "requires_sudo": false
+#     }}
+#   ],
+#   "estimated_time_minutes": 15,
+#   "needs_reboot": false
+# }}
+
+# **COMMON COMMANDS FOR WINDOWS**:
+# - Flush DNS: ipconfig /flushdns (admin required)
+# - Reset Winsock: netsh winsock reset (admin required)
+# - Reset TCP/IP: netsh int ip reset (admin required)
+# - System File Check: sfc /scannow (admin required)
+# - DISM Repair: DISM /Online /Cleanup-Image /RestoreHealth (admin required)
+# - Disk Cleanup: cleanmgr /sagerun:1 (admin required)
+# - Defragment: defrag C: /O (admin required)
+# - Check Disk: chkdsk C: /f (admin required)
+# - Clear Temp: del /q /f /s %TEMP%\\* (no admin)
+# - Stop Service: net stop ServiceName (admin required)
+# - Start Service: net start ServiceName (admin required)
+# - Restart DNS Client: net stop Dnscache && net start Dnscache (admin required)
+
+# **COMMON COMMANDS FOR LINUX**:
+# - Update packages: sudo apt update && sudo apt upgrade -y
+# - Restart service: sudo systemctl restart service_name
+# - Clear cache: sudo apt clean
+# - Fix broken packages: sudo apt --fix-broken install
+# - Remove package: sudo apt remove package_name -y
+
+# **COMMON COMMANDS FOR MACOS**:
+# - Flush DNS: sudo dscacheutil -flushcache
+# - Restart service: sudo launchctl restart service_name
+# - Repair permissions: sudo diskutil resetUserPermissions / `id -u`
+
+# **IMPORTANT**:
+# - Every step MUST have a real command (never empty string or null)
+# - If a step is informational only (like "Save your work"), use a command like "echo Informational step"
+# - Match commands to the operating system: {os_type}
+# - Set needs_reboot to true only if system restart is genuinely required
+# - Prioritize executable commands over manual instructions
+
+# Generate the complete JSON repair plan for: {issue}
+# """
+    
+#     # Call Mistral AI
+#     raw_plan = call_mistral_ai(prompt)
+    
+#     if "error" in raw_plan:
+#         return jsonify({
+#             "software": "Unknown",
+#             "issue": issue,
+#             "summary": "AI service error",
+#             "steps": [{"description": raw_plan["error"], "command": "echo Error occurred", "requires_sudo": False}],
+#             "estimated_time_minutes": 5,
+#             "needs_reboot": False
+#         })
+    
+#     # Sanitize and validate plan (ensure all commands are present)
+#     plan = sanitize_plan(raw_plan, issue)
+    
+#     # Final validation: ensure no empty commands
+#     if "steps" in plan:
+#         for step in plan["steps"]:
+#             if not step.get("command") or step.get("command").strip() == "":
+#                 # Provide a default informational command
+#                 step["command"] = f"echo {step.get('description', 'Manual step')}"
+#                 step["requires_sudo"] = False
+    
+#     # Save to database
+#     supabase_update_session(token, {"plan": plan})
+    
+#     return jsonify(plan)
 
 @app.route('/get-plan', methods=['GET'])
 def get_plan():

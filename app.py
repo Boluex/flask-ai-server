@@ -11,8 +11,14 @@ import os
 import json
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
+from flask_cors import CORS
 
 app = Flask(__name__)
+CORS(app, origins=[
+    "https://techfix-frontend-nc49.onrender.com",
+    "http://localhost:5173"
+])
+
 load_dotenv()
 
 # Configuration

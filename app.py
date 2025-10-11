@@ -28,6 +28,7 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 TECHNICIAN_EMAIL = os.getenv("TECHNICIAN_EMAIL", "oladejiolaoluwa46@gmail.com")
 GMAIL_ADDRESS = os.getenv("GMAIL_ADDRESS")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+ANALYTICS_KEY = os.getenv("ANALYTICS_KEY")
 
 HEADERS = {
     "apikey": SUPABASE_KEY,

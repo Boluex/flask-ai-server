@@ -39,18 +39,45 @@ HEADERS = {
 
 # ============= ANALYTICS FUNCTIONS =============
 
-def log_analytics_event(event_type: str, metadata: dict = None):
-    """
-    Log analytics events to Supabase
+# def log_analytics_event(event_type: str, metadata: dict = None):
+#     """
+#     Log analytics events to Supabase
     
-    Event types:
-    - token_generated
-    - ai_request_success
-    - ai_request_error
-    - agent_downloaded
-    - session_expired
-    - human_help_requested
-    """
+#     Event types:
+#     - token_generated
+#     - ai_request_success
+#     - ai_request_error
+#     - agent_downloaded
+#     - session_expired
+#     - human_help_requested
+#     """
+#     try:
+#         payload = {
+#             "event_type": event_type,
+#             "timestamp": datetime.now(timezone.utc).isoformat(),
+#             "metadata": metadata or {},
+#             "user_agent": request.headers.get('User-Agent', 'Unknown'),
+#             "ip_address": request.headers.get('X-Forwarded-For', request.remote_addr)
+#         }
+        
+#         r = requests.post(
+#             f"{SUPABASE_URL}/rest/v1/analytics",
+#             headers=HEADERS,
+#             json=payload,
+#             timeout=5
+#         )
+        
+#         if r.status_code == 201:
+#             print(f"✅ Analytics logged: {event_type}")
+#         else:
+#             print(f"⚠️ Analytics log failed: {r.status_code}")
+            
+#     except Exception as e:
+#         print(f"❌ Analytics error: {e}")
+#         # Don't fail the main request if analytics fails
+
+
+def log_analytics_event(event_type: str, metadata: dict = None):
     try:
         payload = {
             "event_type": event_type,
@@ -60,6 +87,9 @@ def log_analytics_event(event_type: str, metadata: dict = None):
             "ip_address": request.headers.get('X-Forwarded-For', request.remote_addr)
         }
         
+        print(f"🔍 Attempting to log: {event_type}")
+        print(f"📦 Payload: {payload}")
+        
         r = requests.post(
             f"{SUPABASE_URL}/rest/v1/analytics",
             headers=HEADERS,
@@ -67,14 +97,20 @@ def log_analytics_event(event_type: str, metadata: dict = None):
             timeout=5
         )
         
+        print(f"📤 Supabase response status: {r.status_code}")
+        print(f"📤 Supabase response body: {r.text}")
+        
         if r.status_code == 201:
             print(f"✅ Analytics logged: {event_type}")
         else:
-            print(f"⚠️ Analytics log failed: {r.status_code}")
+            print(f"⚠️ Analytics log failed: {r.status_code} - {r.text}")
             
     except Exception as e:
         print(f"❌ Analytics error: {e}")
-        # Don't fail the main request if analytics fails
+        import traceback
+        traceback.print_exc()
+
+
 
 
 def get_analytics_summary(days: int = 7):

@@ -14,10 +14,15 @@ from dotenv import load_dotenv
 from flask_cors import CORS
 
 app = Flask(__name__)
-CORS(app, origins=[
-    "https://techfix-frontend-nc49.onrender.com",
-    "http://localhost:5173"
-])
+CORS(app, 
+     origins=[
+        "https://techfix-frontend-nc49.onrender.com",
+        "http://localhost:5173"
+     ],
+     allow_headers=["Content-Type", "Authorization"],
+     methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+     supports_credentials=True
+)
 
 load_dotenv()
 

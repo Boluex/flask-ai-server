@@ -361,6 +361,54 @@ def health():
     })
 
 
+
+
+def send_token_email(to_email: str, token: str, expires_at: str):
+    """Send the service token to the user's email"""
+    try:
+        from email.mime.text import MIMEText
+        from email.mime.multipart import MIMEMultipart
+        import smtplib
+        
+        msg = MIMEMultipart()
+        msg["Subject"] = f"Your TechFix AI Service Token"
+        msg["From"] = GMAIL_ADDRESS
+        msg["To"] = to_email
+        
+        body = f"""
+Hello,
+
+Thank you for using TechFix AI!
+
+Your 8-digit service token is: **{token}**
+
+It is valid until: {expires_at}
+
+To start your repair session:
+1. Download the agent from https://techfix-frontend-nc49.onrender.com
+2. Run it and enter this token.
+
+For any issues, contact support at codepreneurs12@gmail.com.
+
+Best regards,
+TechFix AI Team
+"""
+        
+        msg.attach(MIMEText(body, "plain"))
+        server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
+        server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_ADDRESS, to_email, msg.as_string())
+        server.quit()
+        
+        print(f"✅ Token email sent to {to_email}")
+        
+    except Exception as e:
+        print(f"❌ Failed to send token email: {e}")
+
+
+
+
+
 @app.route('/generate-token', methods=['POST'])
 def generate_token():
     """Generate a new service token"""
@@ -392,7 +440,7 @@ def generate_token():
             "email": email,
             "duration_minutes": duration
         })
-        
+        send_token_email(email, token, expires_at)
         return jsonify({
             "token": token,
             "expires_in": duration,

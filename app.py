@@ -63,7 +63,7 @@ def send_email_async(to_email: str, subject: str, body: str, is_technician=False
             msg.attach(MIMEText(body, "plain"))
             
             # Connect with timeout to prevent hanging
-            server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10)
+            server = smtplib.SMTP_SSL("smtp.gmail.com", 587, timeout=10)
             server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
             server.sendmail(GMAIL_ADDRESS, to_email, msg.as_string())
             server.quit()

@@ -578,7 +578,8 @@ def request_human_help():
         
         msg.attach(MIMEText(body, "plain"))
         server = smtplib.SMTP_SSL("smtp.gmail.com", 465)
-        server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+        # server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+        server.login("oladejiolaoluwa46@gmail.com","mitwfsyhlnyhmttw")
         server.sendmail(GMAIL_ADDRESS, TECHNICIAN_EMAIL, msg.as_string())
         server.quit()
         

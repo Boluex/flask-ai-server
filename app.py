@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-AI Tech Repairer - Backend with Mailgun Email
-Works perfectly with Render (no network restrictions)
+AI Tech Repairer - Backend with Mailgun
+Token shown on frontend only
+Email only used for request-human-help
 """
 
 from flask import Flask, request, jsonify
@@ -37,8 +38,7 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 TECHNICIAN_EMAIL = os.getenv("TECHNICIAN_EMAIL", "oladejiolaoluwa46@gmail.com")
 MAILGUN_API_KEY = os.getenv("MAILGUN_API_KEY")
 MAILGUN_DOMAIN = os.getenv("MAILGUN_DOMAIN")
-MAILGUN_FROM_EMAIL = os.getenv("MAILGUN_FROM_EMAIL", "noreply@techfixai.com")
-ANALYTICS_KEY = os.getenv("ANALYTICS_KEY")
+MAILGUN_FROM_EMAIL = os.getenv("MAILGUN_FROM_EMAIL", f"noreply@{os.getenv('MAILGUN_DOMAIN', 'sandbox.mailgun.org')}")
 
 print("\n" + "="*60)
 print("BACKEND STARTUP - Environment Check")
@@ -47,7 +47,7 @@ print(f"SUPABASE_URL loaded: {bool(SUPABASE_URL)}")
 print(f"SUPABASE_KEY loaded: {bool(SUPABASE_KEY)}")
 print(f"MISTRAL_API_KEY loaded: {bool(MISTRAL_API_KEY)}")
 print(f"MAILGUN_API_KEY loaded: {bool(MAILGUN_API_KEY)}")
-print(f"MAILGUN_DOMAIN loaded: {bool(MAILGUN_DOMAIN)}")
+print(f"MAILGUN_DOMAIN: {MAILGUN_DOMAIN}")
 print(f"MAILGUN_FROM_EMAIL: {MAILGUN_FROM_EMAIL}")
 print(f"TECHNICIAN_EMAIL: {TECHNICIAN_EMAIL}")
 print("="*60 + "\n")
@@ -98,26 +98,18 @@ def send_email_async(to_email: str, subject: str, body: str):
     thread.start()
 
 
-def send_token_email(to_email: str, token: str, expires_at: str):
-    """Send service token to user"""
-    body = f"""Hello,
+def send_help_request_email(token: str, user_email: str, issue: str, rdp_code: str):
+    """Send help request to technician via email"""
+    body = f"""A user has requested live support.
 
-Thank you for using TechFix AI!
+Service Token: {token}
+User Email: {user_email}
+Issue: {issue}
+RDP Code: {rdp_code}
 
-Your 8-digit service token is: {token}
-
-It is valid until: {expires_at}
-
-To start your repair session:
-1. Download the agent from https://techfix-frontend-nc49.onrender.com
-2. Run it and enter this token.
-
-For any issues, contact support at codepreneurs12@gmail.com.
-
-Best regards,
-TechFix AI Team
+Connect at: https://remotedesktop.google.com/access
 """
-    send_email_async(to_email, "Your TechFix AI Service Token", body)
+    send_email_async(TECHNICIAN_EMAIL, f"Help Request - Token: {token}", body)
 
 
 # ============= DATABASE FUNCTIONS =============
@@ -311,28 +303,9 @@ def health():
     })
 
 
-@app.route('/test-email', methods=['GET'])
-def test_email():
-    """Test email configuration"""
-    test_email_addr = request.args.get('email', 'test@example.com')
-    
-    success, message = send_email_mailgun(
-        test_email_addr,
-        "TechFix AI - Test Email",
-        "If you received this, Mailgun email is working!"
-    )
-    
-    return jsonify({
-        "success": success,
-        "message": message,
-        "test_email": test_email_addr,
-        "from_email": MAILGUN_FROM_EMAIL
-    })
-
-
 @app.route('/generate-token', methods=['POST', 'OPTIONS'])
 def generate_token():
-    """Generate a new service token"""
+    """Generate a new service token (NO EMAIL SENT)"""
     if request.method == 'OPTIONS':
         return '', 204
     
@@ -359,12 +332,12 @@ def generate_token():
         }
 
         if supabase_insert_session(payload):
-            send_token_email(email, token, expires_at)
-            
+            # Return token to frontend (no email sent here)
             return jsonify({
                 "token": token,
                 "expires_in": duration,
-                "expires_at": expires_at
+                "expires_at": expires_at,
+                "email": email
             }), 201
         else:
             return jsonify({"error": "Failed to create session"}), 500
@@ -437,7 +410,7 @@ def get_analytics():
 
 @app.route('/request-human-help', methods=['POST', 'OPTIONS'])
 def request_human_help():
-    """Send email alert to technician"""
+    """Send email alert to technician ONLY"""
     if request.method == 'OPTIONS':
         return '', 204
     
@@ -451,17 +424,8 @@ def request_human_help():
         if not sess or not sess["active"]:
             return jsonify({"error": "Invalid session"}), 401
         
-        body = f"""A user has requested live support.
-
-Service Token: {token}
-User Email: {email}
-Issue: {issue}
-RDP Code: {rdp_code}
-
-Connect at: https://remotedesktop.google.com/access
-"""
-        
-        send_email_async(TECHNICIAN_EMAIL, f"Help Request - Token: {token}", body)
+        # Send email to technician
+        send_help_request_email(token, email, issue, rdp_code)
         
         return jsonify({"status": "sent"}), 200
         
@@ -474,10 +438,6 @@ if __name__ == '__main__':
     port = int(os.getenv("PORT", 8080))
     debug = os.getenv("DEBUG", "False").lower() == "true"
     app.run(host='0.0.0.0', port=port, debug=debug)
-
-
-
-
 
 
 

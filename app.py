@@ -61,9 +61,69 @@ HEADERS = {
 
 # ============= MAILGUN EMAIL FUNCTION =============
 
+# def send_email_mailgun(to_email: str, subject: str, body: str):
+#     """Send email using Mailgun API"""
+#     try:
+#         response = requests.post(
+#             f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
+#             auth=("api", MAILGUN_API_KEY),
+#             data={
+#                 "from": MAILGUN_FROM_EMAIL,
+#                 "to": to_email,
+#                 "subject": subject,
+#                 "text": body
+#             },
+#             timeout=10
+#         )
+        
+#         if response.status_code == 200:
+#             return True, f"Email sent to {to_email}"
+#         else:
+#             return False, f"Mailgun error: {response.status_code} - {response.text}"
+            
+#     except Exception as e:
+#         return False, f"Email error: {type(e).__name__}: {str(e)}"
+
+
+# def send_email_async(to_email: str, subject: str, body: str):
+#     """Send email in background thread"""
+#     def _send():
+#         success, message = send_email_mailgun(to_email, subject, body)
+#         if success:
+#             print(f"✅ {message}")
+#         else:
+#             print(f"⚠️ {message}")
+    
+#     thread = threading.Thread(target=_send, daemon=True)
+#     thread.start()
+
+
+# def send_help_request_email(token: str, user_email: str, issue: str, rdp_code: str):
+#     """Send help request to technician via email"""
+#     body = f"""A user has requested live support.
+
+# Service Token: {token}
+# User Email: {user_email}
+# Issue: {issue}
+# RDP Code: {rdp_code}
+
+# Connect at: https://remotedesktop.google.com/access
+# """
+#     send_email_async(TECHNICIAN_EMAIL, f"Help Request - Token: {token}", body)
+
+
+
+
 def send_email_mailgun(to_email: str, subject: str, body: str):
     """Send email using Mailgun API"""
+    print(f"\n📧 [EMAIL THREAD] Starting email send to {to_email}")
+    print(f"   Subject: {subject}")
+    
     try:
+        print(f"   API Key present: {bool(MAILGUN_API_KEY)}")
+        print(f"   Domain: {MAILGUN_DOMAIN}")
+        print(f"   From: {MAILGUN_FROM_EMAIL}")
+        
         response = requests.post(
             f"https://api.mailgun.net/v3/{MAILGUN_DOMAIN}/messages",
             auth=("api", MAILGUN_API_KEY),
@@ -76,30 +136,48 @@ def send_email_mailgun(to_email: str, subject: str, body: str):
             timeout=10
         )
         
+        print(f"   Response status: {response.status_code}")
+        print(f"   Response body: {response.text}")
+        
         if response.status_code == 200:
+            print(f"✅ [EMAIL SUCCESS] Email sent to {to_email}")
             return True, f"Email sent to {to_email}"
         else:
+            print(f"❌ [EMAIL FAILED] Mailgun error: {response.status_code}")
+            print(f"   Details: {response.text}")
             return False, f"Mailgun error: {response.status_code} - {response.text}"
             
+    except requests.exceptions.Timeout:
+        print(f"❌ [EMAIL TIMEOUT] Request timed out")
+        return False, "Email request timed out"
     except Exception as e:
+        print(f"❌ [EMAIL ERROR] {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return False, f"Email error: {type(e).__name__}: {str(e)}"
 
 
 def send_email_async(to_email: str, subject: str, body: str):
-    """Send email in background thread"""
+    """Send email in background thread with logging"""
     def _send():
+        print(f"\n📧 [THREAD START] Email thread started")
         success, message = send_email_mailgun(to_email, subject, body)
         if success:
-            print(f"✅ {message}")
+            print(f"✅ [THREAD END] {message}")
         else:
-            print(f"⚠️ {message}")
+            print(f"❌ [THREAD END] {message}")
     
     thread = threading.Thread(target=_send, daemon=True)
     thread.start()
+    print(f"📧 [ASYNC] Email background thread started for {to_email}")
 
 
 def send_help_request_email(token: str, user_email: str, issue: str, rdp_code: str):
     """Send help request to technician via email"""
+    print(f"\n🚀 [HELP REQUEST] Initiating email to technician")
+    print(f"   To: {TECHNICIAN_EMAIL}")
+    print(f"   Token: {token}")
+    
     body = f"""A user has requested live support.
 
 Service Token: {token}

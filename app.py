@@ -14,6 +14,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 from flask_cors import CORS
+import resend
 
 app = Flask(__name__)
 
@@ -31,12 +32,169 @@ CORS(app,
 
 load_dotenv()
 
-# Configuration
+# # Configuration
+# SUPABASE_URL = os.getenv("SUPABASE_URL")  
+# SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+# TECHNICIAN_EMAIL = os.getenv("TECHNICIAN_EMAIL")
+# RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+
+# print("\n" + "="*60)
+# print("BACKEND STARTUP - Environment Check")
+# print("="*60)
+# print(f"SUPABASE_URL loaded: {bool(SUPABASE_URL)}")
+# print(f"SUPABASE_KEY loaded: {bool(SUPABASE_KEY)}")
+# print(f"MISTRAL_API_KEY loaded: {bool(MISTRAL_API_KEY)}")
+# print(f"RESEND_API_KEY loaded: {bool(RESEND_API_KEY)}")
+# print(f"TECHNICIAN_EMAIL: {TECHNICIAN_EMAIL}")
+# print("="*60 + "\n")
+
+# HEADERS = {
+#     "apikey": SUPABASE_KEY,
+#     "Authorization": f"Bearer {SUPABASE_KEY}",
+#     "Content-Type": "application/json"
+# }
+
+
+# # ============= RESEND EMAIL FUNCTIONS =============
+
+# def send_email_with_resend(to_email: str, subject: str, body: str):
+#     """Send email using Resend API"""
+#     print(f"\n📧 [EMAIL] Sending to {to_email}")
+#     print(f"   Subject: {subject}")
+    
+#     try:
+#         response = requests.post(
+#             "https://api.resend.com/emails",
+#             headers={
+#                 "Authorization": f"Bearer {RESEND_API_KEY}",
+#                 "Content-Type": "application/json"
+#             },
+#             json={
+#                 "from": "TechFix AI <onboarding@resend.dev>",  # Use Resend's test domain or your verified domain
+#                 "to": [to_email],
+#                 "subject": subject,
+#                 "html": body
+#             },
+#             timeout=10
+#         )
+        
+#         print(f"   Response status: {response.status_code}")
+        
+#         if response.status_code == 200:
+#             print(f"✅ [EMAIL SUCCESS] Email sent to {to_email}")
+#             return True
+#         else:
+#             print(f"❌ [EMAIL FAILED] Resend error: {response.status_code}")
+#             print(f"   Details: {response.text}")
+#             return False
+            
+#     except requests.exceptions.Timeout:
+#         print(f"❌ [EMAIL TIMEOUT] Request timed out")
+#         return False
+#     except Exception as e:
+#         print(f"❌ [EMAIL ERROR] {type(e).__name__}: {str(e)}")
+#         import traceback
+#         traceback.print_exc()
+#         return False
+
+
+# def send_email_async(to_email: str, subject: str, body: str):
+#     """Send email in background thread"""
+#     def _send():
+#         print(f"\n📧 [THREAD START] Email thread started")
+#         success = send_email_with_resend(to_email, subject, body)
+#         if success:
+#             print(f"✅ [THREAD END] Email sent successfully")
+#         else:
+#             print(f"❌ [THREAD END] Email failed")
+    
+#     thread = threading.Thread(target=_send, daemon=True)
+#     thread.start()
+#     print(f"📧 [ASYNC] Email background thread started for {to_email}")
+
+
+# def send_help_request_email(token: str, user_email: str, issue: str, rdp_code: str):
+#     """Send help request to technician via email"""
+#     print(f"\n🚀 [HELP REQUEST] Initiating email to technician")
+#     print(f"   To: {TECHNICIAN_EMAIL}")
+#     print(f"   Token: {token}")
+    
+#     # Use HTML formatting for better readability
+#     body = f"""
+#     <!DOCTYPE html>
+#     <html>
+#     <head>
+#         <style>
+#             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+#             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
+#             .header {{ background: #4CAF50; color: white; padding: 20px; border-radius: 5px 5px 0 0; }}
+#             .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }}
+#             .info-row {{ margin: 10px 0; }}
+#             .label {{ font-weight: bold; color: #555; }}
+#             .button {{ 
+#                 display: inline-block;
+#                 background: #4CAF50;
+#                 color: white;
+#                 padding: 12px 24px;
+#                 text-decoration: none;
+#                 border-radius: 5px;
+#                 margin-top: 15px;
+#             }}
+#             .footer {{ margin-top: 20px; padding: 10px; text-align: center; color: #777; font-size: 12px; }}
+#         </style>
+#     </head>
+#     <body>
+#         <div class="container">
+#             <div class="header">
+#                 <h2>🆘 Help Request Received</h2>
+#             </div>
+#             <div class="content">
+#                 <div class="info-row">
+#                     <span class="label">Service Token:</span> {token}
+#                 </div>
+#                 <div class="info-row">
+#                     <span class="label">User Email:</span> {user_email}
+#                 </div>
+#                 <div class="info-row">
+#                     <span class="label">Issue:</span> {issue}
+#                 </div>
+#                 <div class="info-row">
+#                     <span class="label">Chrome Remote Desktop Code:</span> <code style="background: #fff; padding: 5px 10px; border-radius: 3px;">{rdp_code}</code>
+#                 </div>
+                
+#                 <a href="https://remotedesktop.google.com/access" class="button">
+#                     🖥️ Connect via Chrome Remote Desktop
+#                 </a>
+                
+#                 <p style="margin-top: 20px; color: #666; font-size: 14px;">
+#                     ⏱️ Session expires in 15 minutes. Please connect as soon as possible.
+#                 </p>
+#             </div>
+#             <div class="footer">
+#                 TechFix AI - Automated Tech Support
+#             </div>
+#         </div>
+#     </body>
+#     </html>
+#     """
+    
+#     send_email_async(TECHNICIAN_EMAIL, f"🆘 Help Request - Token: {token}", body)
+
+
+
+
+
+
+# Configuration (at the top with other configs)
 SUPABASE_URL = os.getenv("SUPABASE_URL")  
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 TECHNICIAN_EMAIL = os.getenv("TECHNICIAN_EMAIL")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
+
+# Initialize Resend
+resend.api_key = RESEND_API_KEY
 
 print("\n" + "="*60)
 print("BACKEND STARTUP - Environment Check")
@@ -48,49 +206,27 @@ print(f"RESEND_API_KEY loaded: {bool(RESEND_API_KEY)}")
 print(f"TECHNICIAN_EMAIL: {TECHNICIAN_EMAIL}")
 print("="*60 + "\n")
 
-HEADERS = {
-    "apikey": SUPABASE_KEY,
-    "Authorization": f"Bearer {SUPABASE_KEY}",
-    "Content-Type": "application/json"
-}
-
-
 # ============= RESEND EMAIL FUNCTIONS =============
 
 def send_email_with_resend(to_email: str, subject: str, body: str):
-    """Send email using Resend API"""
+    """Send email using Resend library"""
     print(f"\n📧 [EMAIL] Sending to {to_email}")
     print(f"   Subject: {subject}")
     
     try:
-        response = requests.post(
-            "https://api.resend.com/emails",
-            headers={
-                "Authorization": f"Bearer {RESEND_API_KEY}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "from": "TechFix AI <onboarding@resend.dev>",  # Use Resend's test domain or your verified domain
-                "to": [to_email],
-                "subject": subject,
-                "html": body
-            },
-            timeout=10
-        )
+        params = {
+            "from": "TechFix AI <onboarding@resend.dev>",
+            "to": [to_email],
+            "subject": subject,
+            "html": body
+        }
         
-        print(f"   Response status: {response.status_code}")
+        email = resend.Emails.send(params)
         
-        if response.status_code == 200:
-            print(f"✅ [EMAIL SUCCESS] Email sent to {to_email}")
-            return True
-        else:
-            print(f"❌ [EMAIL FAILED] Resend error: {response.status_code}")
-            print(f"   Details: {response.text}")
-            return False
+        print(f"✅ [EMAIL SUCCESS] Email sent to {to_email}")
+        print(f"   Email ID: {email.get('id', 'N/A')}")
+        return True
             
-    except requests.exceptions.Timeout:
-        print(f"❌ [EMAIL TIMEOUT] Request timed out")
-        return False
     except Exception as e:
         print(f"❌ [EMAIL ERROR] {type(e).__name__}: {str(e)}")
         import traceback
@@ -179,7 +315,6 @@ def send_help_request_email(token: str, user_email: str, issue: str, rdp_code: s
     """
     
     send_email_async(TECHNICIAN_EMAIL, f"🆘 Help Request - Token: {token}", body)
-
 
 # ============= DATABASE FUNCTIONS =============
 

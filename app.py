@@ -1,329 +1,3 @@
-# #!/usr/bin/env python3
-# """
-# AI Tech Repairer - Backend with Resend Email
-# Token shown on frontend only
-# Email only used for request-human-help
-# """
-
-# from flask import Flask, request, jsonify
-# import requests
-# import uuid
-# import os
-# import json
-# import threading
-# from datetime import datetime, timedelta, timezone
-# from dotenv import load_dotenv
-# from flask_cors import CORS
-# import resend
-
-# app = Flask(__name__)
-
-# CORS(app, 
-#      origins=[
-#         "https://techfix-frontend-nc49.onrender.com",
-#         "http://localhost:5173",
-#         "http://localhost:3000"
-#      ],
-#      allow_headers=["Content-Type", "Authorization"],
-#      methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-#      supports_credentials=True,
-#      max_age=3600
-# )
-
-# load_dotenv()
-
-# # # Configuration
-# # SUPABASE_URL = os.getenv("SUPABASE_URL")  
-# # SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-# # MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-# # TECHNICIAN_EMAIL = os.getenv("TECHNICIAN_EMAIL")
-# # RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-
-# # print("\n" + "="*60)
-# # print("BACKEND STARTUP - Environment Check")
-# # print("="*60)
-# # print(f"SUPABASE_URL loaded: {bool(SUPABASE_URL)}")
-# # print(f"SUPABASE_KEY loaded: {bool(SUPABASE_KEY)}")
-# # print(f"MISTRAL_API_KEY loaded: {bool(MISTRAL_API_KEY)}")
-# # print(f"RESEND_API_KEY loaded: {bool(RESEND_API_KEY)}")
-# # print(f"TECHNICIAN_EMAIL: {TECHNICIAN_EMAIL}")
-# # print("="*60 + "\n")
-
-# # HEADERS = {
-# #     "apikey": SUPABASE_KEY,
-# #     "Authorization": f"Bearer {SUPABASE_KEY}",
-# #     "Content-Type": "application/json"
-# # }
-
-
-# # # ============= RESEND EMAIL FUNCTIONS =============
-
-# # def send_email_with_resend(to_email: str, subject: str, body: str):
-# #     """Send email using Resend API"""
-# #     print(f"\n📧 [EMAIL] Sending to {to_email}")
-# #     print(f"   Subject: {subject}")
-    
-# #     try:
-# #         response = requests.post(
-# #             "https://api.resend.com/emails",
-# #             headers={
-# #                 "Authorization": f"Bearer {RESEND_API_KEY}",
-# #                 "Content-Type": "application/json"
-# #             },
-# #             json={
-# #                 "from": "TechFix AI <onboarding@resend.dev>",  # Use Resend's test domain or your verified domain
-# #                 "to": [to_email],
-# #                 "subject": subject,
-# #                 "html": body
-# #             },
-# #             timeout=10
-# #         )
-        
-# #         print(f"   Response status: {response.status_code}")
-        
-# #         if response.status_code == 200:
-# #             print(f"✅ [EMAIL SUCCESS] Email sent to {to_email}")
-# #             return True
-# #         else:
-# #             print(f"❌ [EMAIL FAILED] Resend error: {response.status_code}")
-# #             print(f"   Details: {response.text}")
-# #             return False
-            
-# #     except requests.exceptions.Timeout:
-# #         print(f"❌ [EMAIL TIMEOUT] Request timed out")
-# #         return False
-# #     except Exception as e:
-# #         print(f"❌ [EMAIL ERROR] {type(e).__name__}: {str(e)}")
-# #         import traceback
-# #         traceback.print_exc()
-# #         return False
-
-
-# # def send_email_async(to_email: str, subject: str, body: str):
-# #     """Send email in background thread"""
-# #     def _send():
-# #         print(f"\n📧 [THREAD START] Email thread started")
-# #         success = send_email_with_resend(to_email, subject, body)
-# #         if success:
-# #             print(f"✅ [THREAD END] Email sent successfully")
-# #         else:
-# #             print(f"❌ [THREAD END] Email failed")
-    
-# #     thread = threading.Thread(target=_send, daemon=True)
-# #     thread.start()
-# #     print(f"📧 [ASYNC] Email background thread started for {to_email}")
-
-
-# # def send_help_request_email(token: str, user_email: str, issue: str, rdp_code: str):
-# #     """Send help request to technician via email"""
-# #     print(f"\n🚀 [HELP REQUEST] Initiating email to technician")
-# #     print(f"   To: {TECHNICIAN_EMAIL}")
-# #     print(f"   Token: {token}")
-    
-# #     # Use HTML formatting for better readability
-# #     body = f"""
-# #     <!DOCTYPE html>
-# #     <html>
-# #     <head>
-# #         <style>
-# #             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-# #             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-# #             .header {{ background: #4CAF50; color: white; padding: 20px; border-radius: 5px 5px 0 0; }}
-# #             .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }}
-# #             .info-row {{ margin: 10px 0; }}
-# #             .label {{ font-weight: bold; color: #555; }}
-# #             .button {{ 
-# #                 display: inline-block;
-# #                 background: #4CAF50;
-# #                 color: white;
-# #                 padding: 12px 24px;
-# #                 text-decoration: none;
-# #                 border-radius: 5px;
-# #                 margin-top: 15px;
-# #             }}
-# #             .footer {{ margin-top: 20px; padding: 10px; text-align: center; color: #777; font-size: 12px; }}
-# #         </style>
-# #     </head>
-# #     <body>
-# #         <div class="container">
-# #             <div class="header">
-# #                 <h2>🆘 Help Request Received</h2>
-# #             </div>
-# #             <div class="content">
-# #                 <div class="info-row">
-# #                     <span class="label">Service Token:</span> {token}
-# #                 </div>
-# #                 <div class="info-row">
-# #                     <span class="label">User Email:</span> {user_email}
-# #                 </div>
-# #                 <div class="info-row">
-# #                     <span class="label">Issue:</span> {issue}
-# #                 </div>
-# #                 <div class="info-row">
-# #                     <span class="label">Chrome Remote Desktop Code:</span> <code style="background: #fff; padding: 5px 10px; border-radius: 3px;">{rdp_code}</code>
-# #                 </div>
-                
-# #                 <a href="https://remotedesktop.google.com/access" class="button">
-# #                     🖥️ Connect via Chrome Remote Desktop
-# #                 </a>
-                
-# #                 <p style="margin-top: 20px; color: #666; font-size: 14px;">
-# #                     ⏱️ Session expires in 15 minutes. Please connect as soon as possible.
-# #                 </p>
-# #             </div>
-# #             <div class="footer">
-# #                 TechFix AI - Automated Tech Support
-# #             </div>
-# #         </div>
-# #     </body>
-# #     </html>
-# #     """
-    
-# #     send_email_async(TECHNICIAN_EMAIL, f"🆘 Help Request - Token: {token}", body)
-
-
-
-
-
-
-# # Configuration (at the top with other configs)
-# SUPABASE_URL = os.getenv("SUPABASE_URL")  
-# SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-# MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-# TECHNICIAN_EMAIL = os.getenv("TECHNICIAN_EMAIL")
-# RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-
-# # Initialize Resend
-# resend.api_key = RESEND_API_KEY
-
-# print("\n" + "="*60)
-# print("BACKEND STARTUP - Environment Check")
-# print("="*60)
-# print(f"SUPABASE_URL loaded: {bool(SUPABASE_URL)}")
-# print(f"SUPABASE_KEY loaded: {bool(SUPABASE_KEY)}")
-# print(f"MISTRAL_API_KEY loaded: {bool(MISTRAL_API_KEY)}")
-# print(f"RESEND_API_KEY loaded: {bool(RESEND_API_KEY)}")
-# print(f"TECHNICIAN_EMAIL: {TECHNICIAN_EMAIL}")
-# print("="*60 + "\n")
-
-# # ============= RESEND EMAIL FUNCTIONS =============
-
-# def send_email_with_resend(to_email: str, subject: str, body: str):
-#     """Send email using Resend library"""
-#     print(f"\n📧 [EMAIL] Sending to {to_email}")
-#     print(f"   Subject: {subject}")
-    
-#     try:
-#         params = {
-#             "from": "TechFix AI <onboarding@resend.dev>",
-#             "to": [to_email],
-#             "subject": subject,
-#             "html": body
-#         }
-        
-#         email = resend.Emails.send(params)
-        
-#         print(f"✅ [EMAIL SUCCESS] Email sent to {to_email}")
-#         print(f"   Email ID: {email.get('id', 'N/A')}")
-#         return True
-            
-#     except Exception as e:
-#         print(f"❌ [EMAIL ERROR] {type(e).__name__}: {str(e)}")
-#         import traceback
-#         traceback.print_exc()
-#         return False
-
-
-# def send_email_async(to_email: str, subject: str, body: str):
-#     """Send email in background thread"""
-#     def _send():
-#         print(f"\n📧 [THREAD START] Email thread started")
-#         success = send_email_with_resend(to_email, subject, body)
-#         if success:
-#             print(f"✅ [THREAD END] Email sent successfully")
-#         else:
-#             print(f"❌ [THREAD END] Email failed")
-    
-#     thread = threading.Thread(target=_send, daemon=True)
-#     thread.start()
-#     print(f"📧 [ASYNC] Email background thread started for {to_email}")
-
-
-# def send_help_request_email(token: str, user_email: str, issue: str, rdp_code: str):
-#     """Send help request to technician via email"""
-#     print(f"\n🚀 [HELP REQUEST] Initiating email to technician")
-#     print(f"   To: {TECHNICIAN_EMAIL}")
-#     print(f"   Token: {token}")
-    
-#     # Use HTML formatting for better readability
-#     body = f"""
-#     <!DOCTYPE html>
-#     <html>
-#     <head>
-#         <style>
-#             body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
-#             .container {{ max-width: 600px; margin: 0 auto; padding: 20px; }}
-#             .header {{ background: #4CAF50; color: white; padding: 20px; border-radius: 5px 5px 0 0; }}
-#             .content {{ background: #f9f9f9; padding: 20px; border: 1px solid #ddd; }}
-#             .info-row {{ margin: 10px 0; }}
-#             .label {{ font-weight: bold; color: #555; }}
-#             .button {{ 
-#                 display: inline-block;
-#                 background: #4CAF50;
-#                 color: white;
-#                 padding: 12px 24px;
-#                 text-decoration: none;
-#                 border-radius: 5px;
-#                 margin-top: 15px;
-#             }}
-#             .footer {{ margin-top: 20px; padding: 10px; text-align: center; color: #777; font-size: 12px; }}
-#         </style>
-#     </head>
-#     <body>
-#         <div class="container">
-#             <div class="header">
-#                 <h2>🆘 Help Request Received</h2>
-#             </div>
-#             <div class="content">
-#                 <div class="info-row">
-#                     <span class="label">Service Token:</span> {token}
-#                 </div>
-#                 <div class="info-row">
-#                     <span class="label">User Email:</span> {user_email}
-#                 </div>
-#                 <div class="info-row">
-#                     <span class="label">Issue:</span> {issue}
-#                 </div>
-#                 <div class="info-row">
-#                     <span class="label">Chrome Remote Desktop Code:</span> <code style="background: #fff; padding: 5px 10px; border-radius: 3px;">{rdp_code}</code>
-#                 </div>
-                
-#                 <a href="https://remotedesktop.google.com/access" class="button">
-#                     🖥️ Connect via Chrome Remote Desktop
-#                 </a>
-                
-#                 <p style="margin-top: 20px; color: #666; font-size: 14px;">
-#                     ⏱️ Session expires in 15 minutes. Please connect as soon as possible.
-#                 </p>
-#             </div>
-#             <div class="footer">
-#                 TechFix AI - Automated Tech Support
-#             </div>
-#         </div>
-#     </body>
-#     </html>
-#     """
-    
-#     send_email_async(TECHNICIAN_EMAIL, f"🆘 Help Request - Token: {token}", body)
-
-
-
-
-
-
-
-
-
 #!/usr/bin/env python3
 """
 AI Tech Repairer - Backend with Resend Email
@@ -336,6 +10,7 @@ import requests
 import uuid
 import os
 import json
+import csv
 import threading
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
@@ -692,6 +367,53 @@ def health():
     })
 
 
+# @app.route('/generate-token', methods=['POST', 'OPTIONS'])
+# def generate_token():
+#     """Generate a new service token (NO EMAIL SENT)"""
+#     if request.method == 'OPTIONS':
+#         return '', 204
+    
+#     try:
+#         email = request.json.get('email')
+#         issue = request.json.get('issue', 'Unknown issue')
+#         duration = int(request.json.get('minutes', 30))
+
+#         if not email or '@' not in email:
+#             return jsonify({"error": "Valid email required"}), 400
+
+#         raw_token = str(uuid.uuid4())[:8].upper()
+#         token = f"{raw_token[:4]}-{raw_token[4:]}"
+#         expires_at = (datetime.now(timezone.utc) + timedelta(minutes=duration)).isoformat()
+
+#         payload = {
+#             "token": token,
+#             "email": email,
+#             "issue": issue,
+#             "created_at": datetime.now(timezone.utc).isoformat(),
+#             "expires_at": expires_at,
+#             "active": True,
+#             "plan": None
+#         }
+
+#         if supabase_insert_session(payload):
+#             # Return token to frontend (no email sent here)
+#             return jsonify({
+#                 "token": token,
+#                 "expires_in": duration,
+#                 "expires_at": expires_at,
+#                 "email": email
+#             }), 201
+#         else:
+#             return jsonify({"error": "Failed to create session"}), 500
+            
+#     except Exception as e:
+#         print(f"Error in generate_token: {e}")
+#         return jsonify({"error": "Internal server error"}), 500
+
+
+
+
+
 @app.route('/generate-token', methods=['POST', 'OPTIONS'])
 def generate_token():
     """Generate a new service token (NO EMAIL SENT)"""
@@ -706,6 +428,28 @@ def generate_token():
         if not email or '@' not in email:
             return jsonify({"error": "Valid email required"}), 400
 
+        # ====== NEW: Deactivate all previous sessions for this email ======
+        try:
+            deactivate_url = f"{SUPABASE_URL}/rest/v1/sessions?email=eq.{email}"
+            deactivate_payload = {"active": False}
+            
+            deactivate_response = requests.patch(
+                deactivate_url,
+                headers=HEADERS,
+                json=deactivate_payload,
+                timeout=10
+            )
+            
+            if deactivate_response.status_code in [200, 204]:
+                print(f"✅ Deactivated previous sessions for {email}")
+            else:
+                print(f"⚠️ Could not deactivate old sessions: {deactivate_response.status_code}")
+        except Exception as e:
+            print(f"⚠️ Error deactivating old sessions: {e}")
+            # Continue anyway - not critical if this fails
+        # ================================================================
+
+        # Generate new token
         raw_token = str(uuid.uuid4())[:8].upper()
         token = f"{raw_token[:4]}-{raw_token[4:]}"
         expires_at = (datetime.now(timezone.utc) + timedelta(minutes=duration)).isoformat()
@@ -716,12 +460,11 @@ def generate_token():
             "issue": issue,
             "created_at": datetime.now(timezone.utc).isoformat(),
             "expires_at": expires_at,
-            "active": True,
+            "active": True,  # Only the NEW session is active
             "plan": None
         }
 
         if supabase_insert_session(payload):
-            # Return token to frontend (no email sent here)
             return jsonify({
                 "token": token,
                 "expires_in": duration,
@@ -734,6 +477,7 @@ def generate_token():
     except Exception as e:
         print(f"Error in generate_token: {e}")
         return jsonify({"error": "Internal server error"}), 500
+
 
 
 @app.route('/generate-plan', methods=['POST', 'OPTIONS'])
@@ -822,6 +566,89 @@ def request_human_help():
         print(f"Error in request_human_help: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
+
+
+@app.route('/cleanup-sessions', methods=['POST'])
+def cleanup_old_sessions():
+    """Delete inactive sessions older than 7 days and maintain user email CSV"""
+    try:
+        # Require authentication
+        auth_key = request.json.get('key')
+        if auth_key != os.getenv("CLEANUP_KEY", "your-secret-cleanup-key"):
+            return jsonify({"error": "Unauthorized"}), 401
+        
+        # Calculate cutoff date (7 days ago)
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        
+        # Delete old inactive sessions
+        delete_url = f"{SUPABASE_URL}/rest/v1/sessions?active=eq.false&created_at=lt.{cutoff_date}"
+        response = requests.delete(delete_url, headers=HEADERS, timeout=10)
+        
+        cleanup_status = "success" if response.status_code in [200, 204] else "failed"
+        
+        # Fetch all sessions to extract unique emails
+        sessions_url = f"{SUPABASE_URL}/rest/v1/sessions?select=email"
+        sessions_response = requests.get(sessions_url, headers=HEADERS, timeout=10)
+        
+        if sessions_response.status_code == 200:
+            sessions = sessions_response.json()
+            
+            # Get existing emails from CSV
+            csv_filename = 'user_emails.csv'
+            existing_emails = set()
+            
+            # Read existing CSV if it exists
+            if os.path.exists(csv_filename):
+                with open(csv_filename, 'r', newline='', encoding='utf-8') as csvfile:
+                    reader = csv.DictReader(csvfile)
+                    existing_emails = {row['email'] for row in reader if row.get('email')}
+            
+            # Extract unique emails from sessions
+            new_emails = set()
+            for session in sessions:
+                email = session.get('email')
+                if email and email not in existing_emails:
+                    new_emails.add(email)
+            
+            # Append new emails to CSV
+            emails_added = 0
+            if new_emails:
+                file_exists = os.path.exists(csv_filename)
+                with open(csv_filename, 'a', newline='', encoding='utf-8') as csvfile:
+                    writer = csv.DictWriter(csvfile, fieldnames=['email', 'added_at'])
+                    
+                    # Write header if file is new
+                    if not file_exists:
+                        writer.writeheader()
+                    
+                    # Write new emails
+                    for email in sorted(new_emails):
+                        writer.writerow({
+                            'email': email,
+                            'added_at': datetime.now(timezone.utc).isoformat()
+                        })
+                        emails_added += 1
+            
+            return jsonify({
+                "status": cleanup_status,
+                "cleanup_message": f"Deleted inactive sessions older than {cutoff_date}",
+                "csv_status": "updated",
+                "emails_added": emails_added,
+                "total_unique_emails": len(existing_emails) + emails_added
+            }), 200
+        else:
+            return jsonify({
+                "status": cleanup_status,
+                "cleanup_message": f"Deleted inactive sessions older than {cutoff_date}",
+                "csv_status": "failed",
+                "error": "Could not fetch sessions for CSV update"
+            }), 200
+            
+    except Exception as e:
+        print(f"Cleanup error: {e}")
+        return jsonify({"error": f"Cleanup failed: {str(e)}"}), 500
+    
+    
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 8080))

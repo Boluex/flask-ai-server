@@ -23,7 +23,8 @@ CORS(app,
      origins=[
         "https://techfix-frontend-nc49.onrender.com",
         "http://localhost:5173",
-        "http://localhost:3000"
+        "http://localhost:3000",
+        "http://localhost:8080"
      ],
      allow_headers=["Content-Type", "Authorization"],
      methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],

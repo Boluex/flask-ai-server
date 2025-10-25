@@ -563,6 +563,62 @@ def generate_token():
         return jsonify({"error": "Internal server error"}), 500
 
 
+
+
+@app.route('/download/agent/<platform>', methods=['GET', 'OPTIONS'])
+@rate_limit
+def download_agent(platform):
+    """Proxy download requests to hide the actual GitHub URL"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    # Map platforms to their actual download URLs
+    download_urls = {
+        'linux': 'https://github.com/Boluex/techfix-frontend/releases/download/1.0/TechFIx.Agent.zip',
+        'windows': 'https://github.com/Boluex/techfix-frontend/releases/download/v1.0.0/TechFix_Agent_Windows.zip',  
+        
+    }
+    
+    if platform not in download_urls:
+        obfuscate_response()
+        return jsonify({"error": "Invalid platform"}), 404
+    
+    try:
+        # Fetch the file from GitHub
+        github_url = download_urls[platform]
+        response = requests.get(github_url, stream=True, timeout=30)
+        
+        if response.status_code != 200:
+            obfuscate_response()
+            return jsonify({"error": "Download not available"}), 404
+        
+        # Create a Flask response that streams the file
+        from flask import Response
+        
+        def generate():
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    yield chunk
+        
+        # Set appropriate headers
+        flask_response = Response(
+            generate(),
+            content_type=response.headers.get('content-type', 'application/octet-stream'),
+            headers={
+                'Content-Disposition': f'attachment; filename=TechFix.Agent.{platform}.zip',
+                'Content-Length': response.headers.get('content-length', '')
+            }
+        )
+        
+        return flask_response
+        
+    except Exception as e:
+        print(f"Download proxy error: {e}")
+        obfuscate_response()
+        return jsonify({"error": "Download failed"}), 500
+
+
+
 @app.route('/generate-plan', methods=['POST', 'OPTIONS'])
 @rate_limit
 def generate_plan():

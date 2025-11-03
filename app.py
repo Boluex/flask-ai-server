@@ -480,58 +480,133 @@ def health():
 
 @app.route('/generate-token', methods=['POST', 'OPTIONS'])
 @rate_limit
+# def generate_token():
+#     """Generate a new service token"""
+#     if request.method == 'OPTIONS':
+#         return '', 204
+    
+#     if is_ip_blocked():
+#         obfuscate_response()
+#         return jsonify({"error": "Access temporarily blocked due to suspicious activity"}), 403
+    
+#     try:
+#         data = request.get_json()
+#         if not data:
+#             track_failed_attempt()
+#             obfuscate_response()
+#             return jsonify({"error": "Invalid request"}), 400
+        
+#         email = data.get('email', '').strip()
+#         issue = sanitize_string(data.get('issue', 'Unknown issue'))
+#         duration = int(data.get('minutes', 30))
+        
+#         if not validate_email(email):
+#             track_failed_attempt(email)
+#             obfuscate_response()
+#             return jsonify({"error": "Valid email required"}), 400
+        
+#         if duration < 1 or duration > 120:
+#             obfuscate_response()
+#             return jsonify({"error": "Invalid duration"}), 400
+
+#         # Deactivate all previous sessions for this email
+#         try:
+#             deactivate_url = f"{SUPABASE_URL}/rest/v1/sessions?email=eq.{email}"
+#             deactivate_payload = {"active": False}
+            
+#             deactivate_response = requests.patch(
+#                 deactivate_url,
+#                 headers=HEADERS,
+#                 json=deactivate_payload,
+#                 timeout=10
+#             )
+            
+#             if deactivate_response.status_code in [200, 204]:
+#                 print(f"✅ Deactivated previous sessions for {email}")
+#             else:
+#                 print(f"⚠️ Could not deactivate old sessions: {deactivate_response.status_code}")
+#         except Exception as e:
+#             print(f"⚠️ Error deactivating old sessions: {e}")
+
+#         # Generate new token
+#         raw_token = str(uuid.uuid4())[:8].upper()
+#         token = f"{raw_token[:4]}-{raw_token[4:]}"
+#         expires_at = (datetime.now(timezone.utc) + timedelta(minutes=duration)).isoformat()
+
+#         payload = {
+#             "token": token,
+#             "email": email,
+#             "issue": issue,
+#             "created_at": datetime.now(timezone.utc).isoformat(),
+#             "expires_at": expires_at,
+#             "active": True,
+#             "plan": None
+#         }
+
+#         if supabase_insert_session(payload):
+#             obfuscate_response()
+#             return jsonify({
+#                 "token": token,
+#                 "expires_in": duration,
+#                 "expires_at": expires_at,
+#                 "email": email
+#             }), 201
+#         else:
+#             track_failed_attempt(email)
+#             obfuscate_response()
+#             return jsonify({"error": "Failed to create session"}), 500
+            
+#     except Exception as e:
+#         print(f"Error in generate_token: {e}")
+#         track_failed_attempt()
+#         obfuscate_response()
+#         return jsonify({"error": "Internal server error"}), 500
+@app.route('/generate-token', methods=['POST', 'OPTIONS'])
+@rate_limit
 def generate_token():
-    """Generate a new service token"""
+    """Generate a new service token with tiered validity"""
     if request.method == 'OPTIONS':
         return '', 204
-    
     if is_ip_blocked():
         obfuscate_response()
-        return jsonify({"error": "Access temporarily blocked due to suspicious activity"}), 403
-    
+        return jsonify({"error": "Access temporarily blocked"}), 403
+
     try:
         data = request.get_json()
         if not data:
             track_failed_attempt()
             obfuscate_response()
             return jsonify({"error": "Invalid request"}), 400
-        
+
         email = data.get('email', '').strip()
         issue = sanitize_string(data.get('issue', 'Unknown issue'))
-        duration = int(data.get('minutes', 30))
-        
+        plan = data.get('plan', 'basic')  # 'basic', 'bundle', 'pro'
+
+        # Validate email
         if not validate_email(email):
             track_failed_attempt(email)
             obfuscate_response()
             return jsonify({"error": "Valid email required"}), 400
-        
-        if duration < 1 or duration > 120:
-            obfuscate_response()
-            return jsonify({"error": "Invalid duration"}), 400
 
-        # Deactivate all previous sessions for this email
+        # Map plan to duration
+        plan_durations = {
+            'basic': 24,    # 24 hours → $29
+            'bundle': 168,  # 7 days → $59
+            'pro': 720      # 30 days → $99
+        }
+        duration_hours = plan_durations.get(plan, 24)
+
+        # Deactivate old sessions for this email
         try:
             deactivate_url = f"{SUPABASE_URL}/rest/v1/sessions?email=eq.{email}"
-            deactivate_payload = {"active": False}
-            
-            deactivate_response = requests.patch(
-                deactivate_url,
-                headers=HEADERS,
-                json=deactivate_payload,
-                timeout=10
-            )
-            
-            if deactivate_response.status_code in [200, 204]:
-                print(f"✅ Deactivated previous sessions for {email}")
-            else:
-                print(f"⚠️ Could not deactivate old sessions: {deactivate_response.status_code}")
+            requests.patch(deactivate_url, headers=HEADERS, json={"active": False}, timeout=10)
         except Exception as e:
-            print(f"⚠️ Error deactivating old sessions: {e}")
+            print(f"⚠️ Could not deactivate old sessions: {e}")
 
-        # Generate new token
+        # Generate token
         raw_token = str(uuid.uuid4())[:8].upper()
         token = f"{raw_token[:4]}-{raw_token[4:]}"
-        expires_at = (datetime.now(timezone.utc) + timedelta(minutes=duration)).isoformat()
+        expires_at = (datetime.now(timezone.utc) + timedelta(hours=duration_hours)).isoformat()
 
         payload = {
             "token": token,
@@ -540,14 +615,15 @@ def generate_token():
             "created_at": datetime.now(timezone.utc).isoformat(),
             "expires_at": expires_at,
             "active": True,
-            "plan": None
+            "plan_type": plan  # ← Critical for agent validation
         }
 
         if supabase_insert_session(payload):
             obfuscate_response()
             return jsonify({
                 "token": token,
-                "expires_in": duration,
+                "plan": plan,
+                "expires_in_hours": duration_hours,
                 "expires_at": expires_at,
                 "email": email
             }), 201
@@ -555,13 +631,12 @@ def generate_token():
             track_failed_attempt(email)
             obfuscate_response()
             return jsonify({"error": "Failed to create session"}), 500
-            
+
     except Exception as e:
         print(f"Error in generate_token: {e}")
         track_failed_attempt()
         obfuscate_response()
         return jsonify({"error": "Internal server error"}), 500
-
 
 
 

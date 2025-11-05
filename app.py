@@ -478,8 +478,8 @@ def health():
     })
 
 
-@app.route('/generate-token', methods=['POST', 'OPTIONS'])
-@rate_limit
+# @app.route('/generate-token', methods=['POST', 'OPTIONS'])
+# @rate_limit
 # def generate_token():
 #     """Generate a new service token"""
 #     if request.method == 'OPTIONS':

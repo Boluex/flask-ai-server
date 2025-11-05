@@ -5,3 +5,4 @@ gunicorn
 flask-cors
 resend
 bs4
+flutterwave-python

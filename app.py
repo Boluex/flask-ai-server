@@ -19,7 +19,7 @@ from functools import wraps
 from collections import defaultdict
 import time
 import secrets
-from flutterwave import Flutterwave
+# from flutterwave import Flutterwave
 app = Flask(__name__)
 
 load_dotenv()
@@ -933,57 +933,65 @@ def create_checkout_session():
     plan_id = data['plan']
     email = data['email']
     
-    # Map plan to price
+    # Map plan to price in **cents (USD)**
     plan_prices = {
-        'basic': 2900,   # $29 → 2900 in NGN/kobo or USD cents (see note below)
-        'bundle': 5900,  # $59
-        'pro': 9900      # $99
+        'basic': 2900,   # $29.00
+        'bundle': 5900,  # $59.00
+        'pro': 9900      # $99.00
     }
     
     if plan_id not in plan_prices:
         return jsonify(error="Invalid plan"), 400
 
-    try:
-        # Initialize Flutterwave
-        flw = Flutterwave(
-            os.getenv("FLUTTERWAVE_PUBLIC_KEY"),
-            os.getenv("FLUTTERWAVE_SECRET_KEY")
-        )
+    # Generate unique transaction reference
+    tx_ref = f"techfix_{uuid.uuid4().hex[:12]}"
 
-        # Create transaction
-        payload = {
-            "tx_ref": f"techfix_{uuid.uuid4().hex[:12]}",
-            "amount": plan_prices[plan_id],
-            "currency": "USD",  # or "NGN" if pricing in Naira
-            "redirect_url": f"{os.getenv('FRONTEND_URL')}/success",
-            "customer": {
-                "email": email,
-                "phonenumber": "",  # optional
-                "name": email.split('@')[0]
-            },
-            "customizations": {
-                "title": "TechFix AI Repairer",
-                "description": f"Plan: {plan_id} - {plan_prices[plan_id]/100:.0f} USD"
-            },
-            "meta": {
-                "email": email,
-                "plan": plan_id
-            }
+    # Build Flutterwave v3 API payload
+    payload = {
+        "tx_ref": tx_ref,
+        "amount": plan_prices[plan_id],
+        "currency": "USD",
+        "redirect_url": f"{os.getenv('FRONTEND_URL')}/success",
+        "customer": {
+            "email": email,
+            "name": email.split('@')[0],
+            "phonenumber": ""
+        },
+        "customizations": {
+            "title": "TechFix AI Repairer",
+            "description": f"Plan: {plan_id} ({plan_prices[plan_id]/100:.0f} USD)"
+        },
+        "meta": {
+            "email": email,
+            "plan": plan_id
         }
+    }
 
-        # Create hosted checkout
-        response = flw.RavePay.setup(payload)
-        if response["status"] == "success":
+    # Call Flutterwave REST API directly
+    try:
+        response = requests.post(
+            "https://api.flutterwave.com/v3/payments",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}",
+                "Content-Type": "application/json"
+            },
+            timeout=10
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("status") == "success":
             return jsonify({
-                "redirect_url": response["data"]["link"]
+                "redirect_url": data["data"]["link"]
             })
         else:
+            print(f"Flutterwave API error: {data}")
             return jsonify(error="Payment setup failed"), 400
 
     except Exception as e:
-        print(f"Flutterwave error: {e}")
+        print(f"Flutterwave REST error: {e}")
         return jsonify(error="Payment service error"), 500
-
 
 
 

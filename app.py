@@ -927,7 +927,7 @@ def honeypot():
 
 
 
-@app.route('/create-checkout-session', methods=['POST'])
+@app.route('/create-checkout-session', methods=['POST','OPTIONS'])
 def create_checkout_session():
     data = request.get_json()
     plan_id = data['plan']

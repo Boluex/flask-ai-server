@@ -19,6 +19,8 @@ from functools import wraps
 from collections import defaultdict
 import time
 import secrets
+import hashlib
+import hmac
 # from flutterwave import Flutterwave
 app = Flask(__name__)
 
@@ -927,48 +929,69 @@ def honeypot():
 
 
 
-@app.route('/create-checkout-session', methods=['POST','OPTIONS'])
+@app.route('/create-checkout-session', methods=['POST', 'OPTIONS'])
+@rate_limit
 def create_checkout_session():
-    data = request.get_json()
-    plan_id = data['plan']
-    email = data['email']
+    """Create Flutterwave payment session"""
+    # Handle preflight request
+    if request.method == 'OPTIONS':
+        return '', 204
     
-    # Map plan to price in **cents (USD)**
-    plan_prices = {
-        'basic': 2900,   # $29.00
-        'bundle': 5900,  # $59.00
-        'pro': 9900      # $99.00
-    }
+    if is_ip_blocked():
+        obfuscate_response()
+        return jsonify({"error": "Access temporarily blocked"}), 403
     
-    if plan_id not in plan_prices:
-        return jsonify(error="Invalid plan"), 400
-
-    # Generate unique transaction reference
-    tx_ref = f"techfix_{uuid.uuid4().hex[:12]}"
-
-    # Build Flutterwave v3 API payload
-    payload = {
-        "tx_ref": tx_ref,
-        "amount": plan_prices[plan_id],
-        "currency": "USD",
-        "redirect_url": f"{os.getenv('FRONTEND_URL')}/success",
-        "customer": {
-            "email": email,
-            "name": email.split('@')[0],
-            "phonenumber": ""
-        },
-        "customizations": {
-            "title": "TechFix AI Repairer",
-            "description": f"Plan: {plan_id} ({plan_prices[plan_id]/100:.0f} USD)"
-        },
-        "meta": {
-            "email": email,
-            "plan": plan_id
-        }
-    }
-
-    # Call Flutterwave REST API directly
     try:
+        data = request.get_json()
+        if not data:
+            obfuscate_response()
+            return jsonify({"error": "Invalid request"}), 400
+        
+        plan_id = data.get('plan')
+        email = data.get('email')
+        amount = data.get('amount')
+        
+        # Validate
+        if not validate_email(email):
+            obfuscate_response()
+            return jsonify({"error": "Valid email required"}), 400
+        
+        # Map plan to price in cents (USD)
+        plan_prices = {
+            'basic': 2900,   # $29.00
+            'bundle': 5900,  # $59.00
+            'pro': 9900      # $99.00
+        }
+        
+        if plan_id not in plan_prices:
+            obfuscate_response()
+            return jsonify({"error": "Invalid plan"}), 400
+
+        # Generate unique transaction reference
+        tx_ref = f"TECHFIX-{uuid.uuid4().hex[:12].upper()}"
+
+        # Build Flutterwave v3 API payload
+        payload = {
+            "tx_ref": tx_ref,
+            "amount": plan_prices[plan_id] / 100,  # Convert to dollars
+            "currency": "USD",
+            "redirect_url": f"{os.getenv('FRONTEND_URL', 'https://techfix-frontend-nc49.onrender.com')}/payment-success",
+            "customer": {
+                "email": email,
+                "name": email.split('@')[0]
+            },
+            "customizations": {
+                "title": "TechFix AI",
+                "description": f"{plan_id.title()} Plan - Tech Repair Service",
+                "logo": "https://your-logo-url.com/logo.png"
+            },
+            "meta": {
+                "email": email,
+                "plan": plan_id
+            }
+        }
+
+        # Call Flutterwave REST API
         response = requests.post(
             "https://api.flutterwave.com/v3/payments",
             json=payload,
@@ -976,27 +999,36 @@ def create_checkout_session():
                 "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}",
                 "Content-Type": "application/json"
             },
-            timeout=10
+            timeout=15
         )
-        response.raise_for_status()
-        data = response.json()
+        
+        if response.status_code != 200:
+            print(f"Flutterwave API error: {response.status_code} - {response.text}")
+            obfuscate_response()
+            return jsonify({"error": "Payment initialization failed"}), 500
 
-        if data.get("status") == "success":
+        response_data = response.json()
+
+        if response_data.get("status") == "success":
+            obfuscate_response()
             return jsonify({
-                "redirect_url": data["data"]["link"]
-            })
+                "redirect_url": response_data["data"]["link"],
+                "tx_ref": tx_ref
+            }), 200
         else:
-            print(f"Flutterwave API error: {data}")
-            return jsonify(error="Payment setup failed"), 400
+            print(f"Flutterwave API error: {response_data}")
+            obfuscate_response()
+            return jsonify({"error": "Payment setup failed"}), 400
 
     except Exception as e:
-        print(f"Flutterwave REST error: {e}")
-        return jsonify(error="Payment service error"), 500
+        print(f"Flutterwave error: {e}")
+        import traceback
+        traceback.print_exc()
+        obfuscate_response()
+        return jsonify({"error": "Payment service error"}), 500
 
 
 
-import hashlib
-import hmac
 
 @app.route('/flutterwave-webhook', methods=['POST'])
 def flutterwave_webhook():
@@ -1053,7 +1085,120 @@ def flutterwave_webhook():
     
     return jsonify(success=True), 200  # Acknowledge other events
 
-
+@app.route('/verify-payment', methods=['POST', 'OPTIONS'])
+@rate_limit
+def verify_payment():
+    """Verify Flutterwave payment and generate token"""
+    if request.method == 'OPTIONS':
+        return '', 204
+    
+    if is_ip_blocked():
+        obfuscate_response()
+        return jsonify({"error": "Access temporarily blocked"}), 403
+    
+    try:
+        data = request.get_json()
+        if not data:
+            obfuscate_response()
+            return jsonify({"error": "Invalid request"}), 400
+        
+        tx_ref = data.get('tx_ref')
+        
+        if not tx_ref:
+            obfuscate_response()
+            return jsonify({"error": "Transaction reference required"}), 400
+        
+        # Verify transaction with Flutterwave
+        headers = {
+            "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}"
+        }
+        
+        response = requests.get(
+            f"https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref={tx_ref}",
+            headers=headers,
+            timeout=15
+        )
+        
+        if response.status_code != 200:
+            obfuscate_response()
+            return jsonify({"status": "failed", "error": "Verification failed"}), 400
+        
+        verification_data = response.json()
+        
+        if verification_data.get("status") != "success":
+            obfuscate_response()
+            return jsonify({"status": "failed"}), 400
+        
+        transaction = verification_data.get("data", {})
+        payment_status = transaction.get("status")
+        
+        if payment_status == "successful":
+            # Extract metadata
+            meta = transaction.get("meta", {})
+            email = transaction.get("customer", {}).get("email") or meta.get("email")
+            plan = meta.get("plan", "basic")
+            
+            if not email:
+                obfuscate_response()
+                return jsonify({"status": "failed", "error": "Email not found"}), 400
+            
+            # Deactivate old sessions
+            try:
+                deactivate_url = f"{SUPABASE_URL}/rest/v1/sessions?email=eq.{email}"
+                requests.patch(deactivate_url, headers=HEADERS, json={"active": False}, timeout=10)
+            except Exception as e:
+                print(f"⚠️ Could not deactivate old sessions: {e}")
+            
+            # Generate token
+            raw_token = str(uuid.uuid4())[:8].upper()
+            token = f"{raw_token[:4]}-{raw_token[4:]}"
+            
+            # Map plan to duration
+            plan_durations = {
+                'basic': 24,    # 24 hours
+                'bundle': 168,  # 7 days
+                'pro': 720      # 30 days
+            }
+            duration_hours = plan_durations.get(plan, 24)
+            expires_at = (datetime.now(timezone.utc) + timedelta(hours=duration_hours)).isoformat()
+            
+            # Create session
+            payload = {
+                "token": token,
+                "email": email,
+                "issue": f"Paid session - {plan} plan",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "expires_at": expires_at,
+                "active": True,
+                "plan_type": plan,
+                "transaction_ref": tx_ref
+            }
+            
+            if supabase_insert_session(payload):
+                obfuscate_response()
+                return jsonify({
+                    "status": "successful",
+                    "token": token,
+                    "expires_at": expires_at,
+                    "plan": plan
+                }), 200
+            else:
+                obfuscate_response()
+                return jsonify({"status": "failed", "error": "Failed to create session"}), 500
+        
+        elif payment_status == "pending":
+            obfuscate_response()
+            return jsonify({"status": "pending"}), 200
+        else:
+            obfuscate_response()
+            return jsonify({"status": "failed"}), 400
+            
+    except Exception as e:
+        print(f"Verify payment error: {e}")
+        import traceback
+        traceback.print_exc()
+        obfuscate_response()
+        return jsonify({"status": "failed", "error": "Verification error"}), 500
 
 
 

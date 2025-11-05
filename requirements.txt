@@ -1,5 +1,4 @@
 flask
-requests
 python-dotenv
 gunicorn
 flask-cors

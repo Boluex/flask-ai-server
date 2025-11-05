@@ -19,7 +19,7 @@ from functools import wraps
 from collections import defaultdict
 import time
 import secrets
-
+from flutterwave import Flutterwave
 app = Flask(__name__)
 
 load_dotenv()
@@ -924,6 +924,129 @@ def honeypot():
     print(f"⚠️ SECURITY ALERT: Suspicious request from {client_ip}")
     obfuscate_response()
     return jsonify({"error": "Invalid endpoint"}), 404
+
+
+
+@app.route('/create-checkout-session', methods=['POST'])
+def create_checkout_session():
+    data = request.get_json()
+    plan_id = data['plan']
+    email = data['email']
+    
+    # Map plan to price
+    plan_prices = {
+        'basic': 2900,   # $29 → 2900 in NGN/kobo or USD cents (see note below)
+        'bundle': 5900,  # $59
+        'pro': 9900      # $99
+    }
+    
+    if plan_id not in plan_prices:
+        return jsonify(error="Invalid plan"), 400
+
+    try:
+        # Initialize Flutterwave
+        flw = Flutterwave(
+            os.getenv("FLUTTERWAVE_PUBLIC_KEY"),
+            os.getenv("FLUTTERWAVE_SECRET_KEY")
+        )
+
+        # Create transaction
+        payload = {
+            "tx_ref": f"techfix_{uuid.uuid4().hex[:12]}",
+            "amount": plan_prices[plan_id],
+            "currency": "USD",  # or "NGN" if pricing in Naira
+            "redirect_url": f"{os.getenv('FRONTEND_URL')}/success",
+            "customer": {
+                "email": email,
+                "phonenumber": "",  # optional
+                "name": email.split('@')[0]
+            },
+            "customizations": {
+                "title": "TechFix AI Repairer",
+                "description": f"Plan: {plan_id} - {plan_prices[plan_id]/100:.0f} USD"
+            },
+            "meta": {
+                "email": email,
+                "plan": plan_id
+            }
+        }
+
+        # Create hosted checkout
+        response = flw.RavePay.setup(payload)
+        if response["status"] == "success":
+            return jsonify({
+                "redirect_url": response["data"]["link"]
+            })
+        else:
+            return jsonify(error="Payment setup failed"), 400
+
+    except Exception as e:
+        print(f"Flutterwave error: {e}")
+        return jsonify(error="Payment service error"), 500
+
+
+
+
+import hashlib
+import hmac
+
+@app.route('/flutterwave-webhook', methods=['POST'])
+def flutterwave_webhook():
+    # Verify webhook signature (security)
+    signature = request.headers.get('verif-hash')
+    secret = os.getenv("FLUTTERWAVE_ENCRYPTION_KEY")
+    
+    if not signature or not secret:
+        return jsonify(success=False), 400
+
+    # Recompute hash
+    computed_signature = hmac.new(
+        secret.encode('utf-8'), 
+        request.get_data(), 
+        hashlib.sha256
+    ).hexdigest()
+
+    if signature != computed_signature:
+        return jsonify(success=False), 401
+
+    # Parse event
+    event = request.get_json()
+    
+    if event.get("event") == "charge.completed":
+        data = event.get("data", {})
+        status = data.get("status")
+        if status == "successful":
+            # Extract metadata
+            meta = data.get("meta", {})
+            email = meta.get("email")
+            plan = meta.get("plan", "basic")
+            
+            if not email:
+                return jsonify(success=False), 400
+
+            # Generate token
+            raw_token = str(uuid.uuid4())[:8].upper()
+            token = f"{raw_token[:4]}-{raw_token[4:]}"
+            duration_hours = {'basic': 24, 'bundle': 168, 'pro': 720}[plan]
+            expires_at = (datetime.now(timezone.utc) + timedelta(hours=duration_hours)).isoformat()
+            
+            payload = {
+                "token": token,
+                "email": email,
+                "issue": "Paid session",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "expires_at": expires_at,
+                "active": True,
+                "plan_type": plan
+            }
+            supabase_insert_session(payload)
+            
+            return jsonify(success=True), 200
+    
+    return jsonify(success=True), 200  # Acknowledge other events
+
+
+
 
 
 # Security headers

@@ -969,11 +969,106 @@ def honeypot():
 
 
 
+# @app.route('/create-checkout-session', methods=['POST', 'OPTIONS'])
+# def create_checkout_session():
+#     """Create Flutterwave payment session"""
+    
+#     # CRITICAL: Handle OPTIONS request FIRST (before any decorators or logic)
+#     if request.method == 'OPTIONS':
+#         response = app.make_response('')
+#         response.headers['Access-Control-Allow-Origin'] = 'https://techfix-frontend-nc49.onrender.com'
+#         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+#         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization'
+#         response.headers['Access-Control-Max-Age'] = '3600'
+#         return response, 200
+    
+#     try:
+#         data = request.get_json()
+#         if not data:
+#             return jsonify({"error": "Invalid request"}), 400
+        
+#         plan_id = data.get('plan')
+#         email = data.get('email')
+        
+#         if not email or '@' not in email:
+#             return jsonify({"error": "Valid email required"}), 400
+        
+#         plan_prices = {
+#             'basic': 29,
+#             'bundle': 59,
+#             'pro': 99
+#         }
+        
+#         if plan_id not in plan_prices:
+#             return jsonify({"error": "Invalid plan"}), 400
+
+#         tx_ref = f"TECHFIX-{uuid.uuid4().hex[:12].upper()}"
+
+#         payload = {
+#             "tx_ref": tx_ref,
+#             "amount": plan_prices[plan_id],
+#             "currency": "USD",
+#             "redirect_url": f"{os.getenv('FRONTEND_URL', 'https://techfix-frontend-nc49.onrender.com')}/payment-success",
+#             "customer": {
+#                 "email": email,
+#                 "name": email.split('@')[0]
+#             },
+#             "customizations": {
+#                 "title": "TechFix AI",
+#                 "description": f"{plan_id.title()} Plan"
+#             },
+#             "meta": {
+#                 "email": email,
+#                 "plan": plan_id
+#             }
+#         }
+
+#         print(f"🔄 Creating payment for {email}, plan: {plan_id}")
+        
+#         fw_response = requests.post(
+#             "https://api.flutterwave.com/v3/payments",
+#             json=payload,
+#             headers={
+#                 "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}",
+#                 "Content-Type": "application/json"
+#             },
+#             timeout=15
+#         )
+        
+#         print(f"📥 Flutterwave status: {fw_response.status_code}")
+
+#         if fw_response.status_code != 200:
+#             print(f"❌ Error: {fw_response.text}")
+#             return jsonify({"error": "Payment initialization failed"}), 500
+
+#         fw_data = fw_response.json()
+
+#         if fw_data.get("status") == "success":
+#             return jsonify({
+#                 "redirect_url": fw_data["data"]["link"],
+#                 "tx_ref": tx_ref
+#             }), 200
+#         else:
+#             print(f"❌ FW Error: {fw_data}")
+#             return jsonify({"error": "Payment setup failed"}), 400
+
+#     except Exception as e:
+#         print(f"💥 Exception: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"error": "Payment service error"}), 500
+
+
+
+
+
+
+
+
 @app.route('/create-checkout-session', methods=['POST', 'OPTIONS'])
 def create_checkout_session():
     """Create Flutterwave payment session"""
     
-    # CRITICAL: Handle OPTIONS request FIRST (before any decorators or logic)
     if request.method == 'OPTIONS':
         response = app.make_response('')
         response.headers['Access-Control-Allow-Origin'] = 'https://techfix-frontend-nc49.onrender.com'
@@ -1004,11 +1099,14 @@ def create_checkout_session():
 
         tx_ref = f"TECHFIX-{uuid.uuid4().hex[:12].upper()}"
 
+        # IMPORTANT: Redirect back to home page, not /payment-success
+        frontend_url = os.getenv('FRONTEND_URL', 'https://techfix-frontend-nc49.onrender.com')
+        
         payload = {
             "tx_ref": tx_ref,
             "amount": plan_prices[plan_id],
             "currency": "USD",
-            "redirect_url": f"{os.getenv('FRONTEND_URL', 'https://techfix-frontend-nc49.onrender.com')}/payment-success",
+            "redirect_url": f"{frontend_url}/?status=successful&tx_ref={tx_ref}",  # ← Changed this
             "customer": {
                 "email": email,
                 "name": email.split('@')[0]
@@ -1057,6 +1155,10 @@ def create_checkout_session():
         import traceback
         traceback.print_exc()
         return jsonify({"error": "Payment service error"}), 500
+
+
+
+
 
 
 

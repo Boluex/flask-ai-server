@@ -929,13 +929,13 @@ def request_human_help():
         token = data.get('token', '').strip()
         email = data.get('email', '').strip()
         issue = sanitize_string(data.get('issue', ''))
-        rdp_code = sanitize_string(data.get('rdp_code', ''))
+        rdp_code = sanitize_string(data.get('anydesk_code', ''))
         
         if not validate_email(email):
             obfuscate_response()
             return jsonify({"error": "Valid email required"}), 400
         
-        if not all([token, email, issue, rdp_code]):
+        if not all([token, email, issue, anydesk_code]):
             obfuscate_response()
             return jsonify({"error": "Missing required fields"}), 400
         
@@ -945,7 +945,7 @@ def request_human_help():
             obfuscate_response()
             return jsonify({"error": "Invalid session"}), 401
         
-        send_help_request_email(token, email, issue, rdp_code)
+        send_help_request_email(token, email, issue, anydesk_code)
         
         obfuscate_response()
         return jsonify({"status": "sent"}), 200

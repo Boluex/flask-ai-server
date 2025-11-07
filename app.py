@@ -234,7 +234,7 @@ def send_email_async(to_email: str, subject: str, body: str):
     print(f"📧 [ASYNC] Email background thread started for {to_email}")
 
 
-def send_help_request_email(token: str, user_email: str, issue: str, rdp_code: str):
+def send_help_request_email(token: str, user_email: str, issue: str, anydesk_code: str):
     """Send help request to technician via email"""
     print(f"\n🚀 [HELP REQUEST] Initiating email to technician")
     print(f"   To: {TECHNICIAN_EMAIL}")
@@ -279,11 +279,11 @@ def send_help_request_email(token: str, user_email: str, issue: str, rdp_code: s
                     <span class="label">Issue:</span> {issue}
                 </div>
                 <div class="info-row">
-                    <span class="label">Chrome Remote Desktop Code:</span> <code style="background: #fff; padding: 5px 10px; border-radius: 3px;">{rdp_code}</code>
+                    <span class="label">Anydesk Remote Desktop Code:</span> <code style="background: #fff; padding: 5px 10px; border-radius: 3px;">{anydesk_code}</code>
                 </div>
                 
                 <a href="https://remotedesktop.google.com/access" class="button">
-                    🖥️ Connect via Chrome Remote Desktop
+                    🖥️ Connect via Anydesk Remote Desktop
                 </a>
                 
                 <p style="margin-top: 20px; color: #666; font-size: 14px;">
@@ -929,7 +929,7 @@ def request_human_help():
         token = data.get('token', '').strip()
         email = data.get('email', '').strip()
         issue = sanitize_string(data.get('issue', ''))
-        rdp_code = sanitize_string(data.get('anydesk_code', ''))
+        anydesk_code = sanitize_string(data.get('anydesk_code', ''))
         
         if not validate_email(email):
             obfuscate_response()

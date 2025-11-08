@@ -304,64 +304,6 @@ def send_help_request_email(token: str, user_email: str, issue: str, anydesk_cod
 # ============= DATABASE FUNCTIONS =============
 
 
-# def supabase_get_token(token: str):
-#     """Fetch session data from Supabase with PROPER validation"""
-#     try:
-#         r = requests.get(
-#             f"{SUPABASE_URL}/rest/v1/sessions?token=eq.{token}",
-#             headers=HEADERS,
-#             params={"select": "token,email,issue,active,expires_at,plan_type,created_at"}, # Include expires_at and created_at
-#             timeout=10
-#         )
-#         if r.status_code == 200:
-#             data = r.json()
-#             if not data:
-#                 print(f"🔍 Token {token} not found in database.")
-#                 return None
-#             session = data[0]
-
-#             # ===== CRITICAL FIX: Validate expiry from database =====
-#             expires_at_str = session.get('expires_at')
-#             if not expires_at_str:
-#                 print(f"⚠️ Session {token} has no expiry date in database.")
-#                 return None
-
-#             # Parse expiry as UTC-aware datetime
-#             try:
-#                 if expires_at_str.endswith('Z'):
-#                     expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-#                 else:
-#                     # If Supabase returns without 'Z', it might already be offset-aware
-#                     expires_at = datetime.fromisoformat(expires_at_str)
-#                 if expires_at.tzinfo is None:
-#                     expires_at = expires_at.replace(tzinfo=timezone.utc)
-
-#                 # Check if expired
-#                 now_utc = datetime.now(timezone.utc)
-#                 if now_utc >= expires_at:
-#                     print(f"⏰ Token {token} has expired on: {expires_at_str}")
-#                     print(f"   Current time (UTC): {now_utc.isoformat()}")
-#                     # Auto-deactivate expired token in database (optional but recommended)
-#                     try:
-#                         deactivate_url = f"{SUPABASE_URL}/rest/v1/sessions?token=eq.{token}"
-#                         requests.patch(deactivate_url, headers=HEADERS, json={"active": False}, timeout=10)
-#                         print(f"   🗑️ Token {token} deactivated in database.")
-#                     except Exception as e:
-#                         print(f"   ⚠️ Could not deactivate token in DB: {e}")
-#                     return None # Return None if expired
-#             except Exception as e:
-#                 print(f"⚠️ Error parsing expiry date from database for token {token}: {e}")
-#                 return None
-
-#             # Token is valid and not expired, return session data
-#             print(f"✅ Token {token} is valid and expires at: {expires_at_str}")
-#             return session
-#         else:
-#             print(f"🔍 Supabase query failed for token {token}, status: {r.status_code}")
-#             return None
-#     except Exception as e:
-#         print(f"🔍 Supabase GET error for token {token}: {e}")
-#         return None
 
 
 def supabase_get_token(token: str):
@@ -615,89 +557,6 @@ def health():
     })
 
 
-
-
-# @app.route('/generate-token', methods=['POST', 'OPTIONS'])
-# @rate_limit
-# def generate_token():
-#     """Generate a new service token with PROPER tiered validity"""
-#     if request.method == 'OPTIONS':
-#         return '', 204
-#     if is_ip_blocked():
-#         obfuscate_response()
-#         return jsonify({"error": "Access temporarily blocked"}), 403
-#     try:
-#         data = request.get_json()
-#         if not data:
-#             track_failed_attempt()
-#             obfuscate_response()
-#             return jsonify({"error": "Invalid request"}), 400
-#         email = data.get('email', '').strip()
-#         issue = sanitize_string(data.get('issue', 'Unknown issue'))
-#         plan = data.get('plan', 'basic')  # 'basic', 'bundle', 'pro'
-
-#         # Validate email
-#         if not validate_email(email):
-#             track_failed_attempt(email)
-#             obfuscate_response()
-#             return jsonify({"error": "Valid email required"}), 400
-
-#         # ===== CRITICAL FIX: Proper duration mapping =====
-#         plan_durations = {
-#             'basic': 24,      # 24 hours
-#             'bundle': 168,    # 7 days (7 * 24)
-#             'pro': 720        # 30 days (30 * 24)
-#         }
-#         duration_hours = plan_durations.get(plan, 24)
-
-#         # Deactivate old sessions for this email
-#         try:
-#             deactivate_url = f"{SUPABASE_URL}/rest/v1/sessions?email=eq.{email}"
-#             requests.patch(deactivate_url, headers=HEADERS, json={"active": False}, timeout=10)
-#         except Exception as e:
-#             print(f"⚠️ Could not deactivate old sessions: {e}")
-
-#         # Generate token
-#         raw_token = str(uuid.uuid4())[:8].upper()
-#         token = f"{raw_token[:4]}-{raw_token[4:]}"
-#         # Calculate expiry in UTC
-#         now_utc = datetime.now(timezone.utc)
-#         expires_at = now_utc + timedelta(hours=duration_hours)
-#         expires_at_str = expires_at.isoformat()
-
-#         payload = {
-#             "token": token,
-#             "email": email,
-#             "issue": issue,
-#             "created_at": now_utc.isoformat(),
-#             "expires_at": expires_at_str,  # Store the calculated expiry time
-#             "active": True,
-#             "plan_type": plan  # ← Critical for agent validation
-#         }
-
-#         print(f"📝 Creating token: {token}")
-#         print(f"   Plan: {plan}")
-#         print(f"   Duration: {duration_hours} hours")
-#         print(f"   Expires: {expires_at_str}")
-
-#         if supabase_insert_session(payload):
-#             obfuscate_response()
-#             return jsonify({
-#                 "token": token,
-#                 "plan": plan,
-#                 "expires_in_hours": duration_hours,
-#                 "expires_at": expires_at_str,
-#                 "email": email
-#             }), 201
-#         else:
-#             track_failed_attempt(email)
-#             obfuscate_response()
-#             return jsonify({"error": "Failed to create session"}), 500
-#     except Exception as e:
-#         print(f"Error in generate_token: {e}")
-#         track_failed_attempt()
-#         obfuscate_response()
-#         return jsonify({"error": "Internal server error"}), 500
 
 
 
@@ -1086,96 +945,96 @@ def honeypot():
 
 
 
-@app.route('/create-checkout-session', methods=['POST', 'OPTIONS'])
-def create_checkout_session():
-    """Create Flutterwave payment session"""
+# @app.route('/create-checkout-session', methods=['POST', 'OPTIONS'])
+# def create_checkout_session():
+#     """Create Flutterwave payment session"""
     
-    if request.method == 'OPTIONS':
-        response = app.make_response('')
-        response.headers['Access-Control-Allow-Origin'] = 'https://techfix-frontend-nc49.onrender.com'
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization'
-        response.headers['Access-Control-Max-Age'] = '3600'
-        return response, 200
+#     if request.method == 'OPTIONS':
+#         response = app.make_response('')
+#         response.headers['Access-Control-Allow-Origin'] = 'https://techfix-frontend-nc49.onrender.com'
+#         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+#         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization'
+#         response.headers['Access-Control-Max-Age'] = '3600'
+#         return response, 200
     
-    try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"error": "Invalid request"}), 400
+#     try:
+#         data = request.get_json()
+#         if not data:
+#             return jsonify({"error": "Invalid request"}), 400
         
-        plan_id = data.get('plan')
-        email = data.get('email')
+#         plan_id = data.get('plan')
+#         email = data.get('email')
         
-        if not email or '@' not in email:
-            return jsonify({"error": "Valid email required"}), 400
+#         if not email or '@' not in email:
+#             return jsonify({"error": "Valid email required"}), 400
         
-        plan_prices = {
-            'basic': 29,
-            'bundle': 59,
-            'pro': 99
-        }
+#         plan_prices = {
+#             'basic': 29,
+#             'bundle': 59,
+#             'pro': 99
+#         }
         
-        if plan_id not in plan_prices:
-            return jsonify({"error": "Invalid plan"}), 400
+#         if plan_id not in plan_prices:
+#             return jsonify({"error": "Invalid plan"}), 400
 
-        tx_ref = f"TECHFIX-{uuid.uuid4().hex[:12].upper()}"
+#         tx_ref = f"TECHFIX-{uuid.uuid4().hex[:12].upper()}"
 
-        # IMPORTANT: Redirect back to home page, not /payment-success
-        frontend_url = os.getenv('FRONTEND_URL', 'https://techfix-frontend-nc49.onrender.com')
+#         # IMPORTANT: Redirect back to home page, not /payment-success
+#         frontend_url = os.getenv('FRONTEND_URL', 'https://techfix-frontend-nc49.onrender.com')
         
-        payload = {
-            "tx_ref": tx_ref,
-            "amount": plan_prices[plan_id],
-            "currency": "USD",
-            "redirect_url": f"{frontend_url}/?status=successful&tx_ref={tx_ref}",  # ← Changed this
-            "customer": {
-                "email": email,
-                "name": email.split('@')[0]
-            },
-            "customizations": {
-                "title": "TechFix AI",
-                "description": f"{plan_id.title()} Plan"
-            },
-            "meta": {
-                "email": email,
-                "plan": plan_id
-            }
-        }
+#         payload = {
+#             "tx_ref": tx_ref,
+#             "amount": plan_prices[plan_id],
+#             "currency": "USD",
+#             "redirect_url": f"{frontend_url}/?status=successful&tx_ref={tx_ref}",  # ← Changed this
+#             "customer": {
+#                 "email": email,
+#                 "name": email.split('@')[0]
+#             },
+#             "customizations": {
+#                 "title": "TechFix AI",
+#                 "description": f"{plan_id.title()} Plan"
+#             },
+#             "meta": {
+#                 "email": email,
+#                 "plan": plan_id
+#             }
+#         }
 
-        print(f"🔄 Creating payment for {email}, plan: {plan_id}")
+#         print(f"🔄 Creating payment for {email}, plan: {plan_id}")
         
-        fw_response = requests.post(
-            "https://api.flutterwave.com/v3/payments",
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}",
-                "Content-Type": "application/json"
-            },
-            timeout=15
-        )
+#         fw_response = requests.post(
+#             "https://api.flutterwave.com/v3/payments",
+#             json=payload,
+#             headers={
+#                 "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}",
+#                 "Content-Type": "application/json"
+#             },
+#             timeout=15
+#         )
         
-        print(f"📥 Flutterwave status: {fw_response.status_code}")
+#         print(f"📥 Flutterwave status: {fw_response.status_code}")
 
-        if fw_response.status_code != 200:
-            print(f"❌ Error: {fw_response.text}")
-            return jsonify({"error": "Payment initialization failed"}), 500
+#         if fw_response.status_code != 200:
+#             print(f"❌ Error: {fw_response.text}")
+#             return jsonify({"error": "Payment initialization failed"}), 500
 
-        fw_data = fw_response.json()
+#         fw_data = fw_response.json()
 
-        if fw_data.get("status") == "success":
-            return jsonify({
-                "redirect_url": fw_data["data"]["link"],
-                "tx_ref": tx_ref
-            }), 200
-        else:
-            print(f"❌ FW Error: {fw_data}")
-            return jsonify({"error": "Payment setup failed"}), 400
+#         if fw_data.get("status") == "success":
+#             return jsonify({
+#                 "redirect_url": fw_data["data"]["link"],
+#                 "tx_ref": tx_ref
+#             }), 200
+#         else:
+#             print(f"❌ FW Error: {fw_data}")
+#             return jsonify({"error": "Payment setup failed"}), 400
 
-    except Exception as e:
-        print(f"💥 Exception: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": "Payment service error"}), 500
+#     except Exception as e:
+#         print(f"💥 Exception: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"error": "Payment service error"}), 500
 
 
 
@@ -1241,141 +1100,123 @@ def flutterwave_webhook():
 
 
 
-# @app.route('/verify-payment', methods=['POST', 'OPTIONS'])
-# def verify_payment():
-#     """Verify Flutterwave payment and generate token"""
-#     if request.method == 'OPTIONS':
-#         response = app.make_response('')
-#         response.headers['Access-Control-Allow-Origin'] = 'https://techfix-frontend-nc49.onrender.com'
-#         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-#         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization'
-#         return response, 200
+
+
+# ========================================
+# STEP 1: Update /create-checkout-session
+# ========================================
+
+@app.route('/create-checkout-session', methods=['POST', 'OPTIONS'])
+def create_checkout_session():
+    """Create Flutterwave payment session - STORE USER EMAIL IN META"""
     
-#     try:
-#         data = request.get_json()
-#         if not data:
-#             return jsonify({"error": "Invalid request"}), 400
+    if request.method == 'OPTIONS':
+        response = app.make_response('')
+        response.headers['Access-Control-Allow-Origin'] = 'https://techfix-frontend-nc49.onrender.com'
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization'
+        response.headers['Access-Control-Max-Age'] = '3600'
+        return response, 200
+    
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "Invalid request"}), 400
         
-#         tx_ref = data.get('tx_ref')
+        plan_id = data.get('plan')
+        email = data.get('email')  # USER'S ORIGINAL EMAIL
         
-#         if not tx_ref:
-#             return jsonify({"error": "Transaction reference required"}), 400
+        if not email or '@' not in email:
+            return jsonify({"error": "Valid email required"}), 400
         
-#         print(f"🔍 Verifying payment: {tx_ref}")
+        plan_prices = {
+            'basic': 29,
+            'bundle': 59,
+            'pro': 99
+        }
         
-#         # Verify transaction with Flutterwave
-#         headers = {
-#             "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}"
-#         }
+        if plan_id not in plan_prices:
+            return jsonify({"error": "Invalid plan"}), 400
+
+        tx_ref = f"TECHFIX-{uuid.uuid4().hex[:12].upper()}"
+        frontend_url = os.getenv('FRONTEND_URL', 'https://techfix-frontend-nc49.onrender.com')
         
-#         response = requests.get(
-#             f"https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref={tx_ref}",
-#             headers=headers,
-#             timeout=15
-#         )
+        payload = {
+            "tx_ref": tx_ref,
+            "amount": plan_prices[plan_id],
+            "currency": "USD",
+            "redirect_url": f"{frontend_url}/?status=successful&tx_ref={tx_ref}",
+            "customer": {
+                "email": email,  # Flutterwave uses this for payment
+                "name": email.split('@')[0]
+            },
+            "customizations": {
+                "title": "TechFix AI",
+                "description": f"{plan_id.title()} Plan"
+            },
+            "meta": {
+                # ===== CRITICAL: Store original email in meta =====
+                "user_email": email,  # This is the key fix!
+                "plan": plan_id
+            }
+        }
+
+        print(f"🔄 Creating payment for {email}, plan: {plan_id}")
+        print(f"   Storing user_email in meta: {email}")
         
-#         print(f"📥 Flutterwave verify status: {response.status_code}")
+        fw_response = requests.post(
+            "https://api.flutterwave.com/v3/payments",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}",
+                "Content-Type": "application/json"
+            },
+            timeout=15
+        )
         
-#         if response.status_code != 200:
-#             print(f"❌ Flutterwave error: {response.text}")
-#             return jsonify({"status": "failed", "error": "Verification failed"}), 400
-        
-#         verification_data = response.json()
-#         print(f"📦 Verification data: {verification_data}")
-        
-#         if verification_data.get("status") != "success":
-#             return jsonify({"status": "failed"}), 400
-        
-#         transaction = verification_data.get("data", {})
-#         payment_status = transaction.get("status")
-        
-#         print(f"💳 Payment status: {payment_status}")
-        
-#         if payment_status == "successful":
-#             # Extract metadata
-#             customer = transaction.get("customer", {})
-#             meta = transaction.get("meta", {})
-#             email = customer.get("email") or meta.get("email")
-#             plan = meta.get("plan", "basic")
-            
-#             print(f"✅ Payment successful for {email}, plan: {plan}")
-            
-#             if not email:
-#                 return jsonify({"status": "failed", "error": "Email not found"}), 400
-            
-#             # Deactivate old sessions
-#             try:
-#                 deactivate_url = f"{SUPABASE_URL}/rest/v1/sessions?email=eq.{email}"
-#                 requests.patch(deactivate_url, headers=HEADERS, json={"active": False}, timeout=10)
-#                 print(f"🗑️ Deactivated old sessions for {email}")
-#             except Exception as e:
-#                 print(f"⚠️ Could not deactivate old sessions: {e}")
-            
-#             # Generate token
-#             raw_token = str(uuid.uuid4())[:8].upper()
-#             token = f"{raw_token[:4]}-{raw_token[4:]}"
-            
-#             # Map plan to duration
-#             plan_durations = {
-#                 'basic': 24,    # 24 hours
-#                 'bundle': 168,  # 7 days
-#                 'pro': 720      # 30 days
-#             }
-#             duration_hours = plan_durations.get(plan, 24)
-#             expires_at = (datetime.now(timezone.utc) + timedelta(hours=duration_hours)).isoformat()
-            
-#             print(f"🎟️ Generated token: {token} (expires: {expires_at})")
-            
-#             # Create session
-#             payload = {
-#                 "token": token,
-#                 "email": email,
-#                 "issue": f"Paid session - {plan} plan",
-#                 "created_at": datetime.now(timezone.utc).isoformat(),
-#                 "expires_at": expires_at,
-#                 "active": True,
-#                 "plan_type": plan,
-#                 "transaction_ref": tx_ref
-#             }
-            
-#             if supabase_insert_session(payload):
-#                 print(f"✅ Session created successfully")
-#                 return jsonify({
-#                     "status": "successful",
-#                     "token": token,
-#                     "expires_at": expires_at,
-#                     "plan": plan
-#                 }), 200
-#             else:
-#                 print(f"❌ Failed to create session in database")
-#                 return jsonify({"status": "failed", "error": "Failed to create session"}), 500
-        
-#         elif payment_status == "pending":
-#             print(f"⏳ Payment still pending")
-#             return jsonify({"status": "pending"}), 200
-#         else:
-#             print(f"❌ Payment failed with status: {payment_status}")
-#             return jsonify({"status": "failed"}), 400
-            
-#     except Exception as e:
-#         print(f"💥 Verify payment exception: {e}")
-#         import traceback
-#         traceback.print_exc()
-#         return jsonify({"status": "failed", "error": "Verification error"}), 500
+        print(f"📥 Flutterwave status: {fw_response.status_code}")
+
+        if fw_response.status_code != 200:
+            print(f"❌ Error: {fw_response.text}")
+            return jsonify({"error": "Payment initialization failed"}), 500
+
+        fw_data = fw_response.json()
+
+        if fw_data.get("status") == "success":
+            return jsonify({
+                "redirect_url": fw_data["data"]["link"],
+                "tx_ref": tx_ref
+            }), 200
+        else:
+            print(f"❌ FW Error: {fw_data}")
+            return jsonify({"error": "Payment setup failed"}), 400
+
+    except Exception as e:
+        print(f"💥 Exception: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": "Payment service error"}), 500
+
+
+# ========================================
+# STEP 2: Update /verify-payment
+# ========================================
 
 @app.route('/verify-payment', methods=['POST', 'OPTIONS'])
 def verify_payment():
-    """Verify Flutterwave payment and generate token with PROPER duration"""
+    """Verify Flutterwave payment - USE USER EMAIL FROM META"""
     if request.method == 'OPTIONS':
         response = app.make_response('')
         response.headers['Access-Control-Allow-Origin'] = 'https://techfix-frontend-nc49.onrender.com'
         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization'
         return response, 200
+    
     try:
         data = request.get_json()
         if not data:
             return jsonify({"error": "Invalid request"}), 400
+        
         tx_ref = data.get('tx_ref')
         if not tx_ref:
             return jsonify({"error": "Transaction reference required"}), 400
@@ -1384,36 +1225,52 @@ def verify_payment():
         headers = {
             "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}"
         }
+        
         response = requests.get(
             f"https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref={tx_ref}",
             headers=headers,
             timeout=15
         )
+        
         print(f"📥 Flutterwave verify status: {response.status_code}")
+        
         if response.status_code != 200:
             print(f"❌ Flutterwave error: {response.text}")
             return jsonify({"status": "failed", "error": "Verification failed"}), 400
 
         verification_data = response.json()
-        print(f"📦 Verification data: {verification_data}")
+        
         if verification_data.get("status") != "success":
             return jsonify({"status": "failed"}), 400
 
         transaction = verification_data.get("data", {})
         payment_status = transaction.get("status")
+        
         print(f"💳 Payment status: {payment_status}")
 
         if payment_status == "successful":
-            customer = transaction.get("customer", {})
+            # ===== CRITICAL FIX: Get email from meta instead of customer =====
             meta = transaction.get("meta", {})
-            email = customer.get("email") or meta.get("email")
-            plan = meta.get("plan", "basic") # Get plan from meta
-            print(f"✅ Payment successful for {email}, plan: {plan}")
+            customer = transaction.get("customer", {})
+            
+            # Priority: meta.user_email > meta.email > customer.email
+            email = (
+                meta.get("user_email") or      # Our stored email (BEST)
+                meta.get("email") or            # Fallback
+                customer.get("email")           # Last resort (Flutterwave email)
+            )
+            
+            plan = meta.get("plan", "basic")
+            
+            print(f"✅ Payment successful")
+            print(f"   User email (from meta): {email}")
+            print(f"   Plan: {plan}")
+            print(f"   Customer email (FW): {customer.get('email')}")  # For debugging
 
             if not email:
                 return jsonify({"status": "failed", "error": "Email not found"}), 400
 
-            # Deactivate old sessions
+            # Deactivate old sessions for THIS USER'S EMAIL
             try:
                 deactivate_url = f"{SUPABASE_URL}/rest/v1/sessions?email=eq.{email}"
                 requests.patch(deactivate_url, headers=HEADERS, json={"active": False}, timeout=10)
@@ -1421,52 +1278,54 @@ def verify_payment():
             except Exception as e:
                 print(f"⚠️ Could not deactivate old sessions: {e}")
 
-            # Generate token with PROPER duration based on plan
+            # Generate token
             raw_token = str(uuid.uuid4())[:8].upper()
             token = f"{raw_token[:4]}-{raw_token[4:]}"
+            
             plan_durations = {
                 'basic': 24,      # 24 hours
                 'bundle': 168,    # 7 days
                 'pro': 720        # 30 days
             }
-            duration_hours = plan_durations.get(plan, 24) # Use plan to get duration
+            duration_hours = plan_durations.get(plan, 24)
+            
             now_utc = datetime.now(timezone.utc)
             expires_at = now_utc + timedelta(hours=duration_hours)
-            expires_at_str = expires_at.isoformat() # Format expiry time
+            expires_at_str = expires_at.isoformat()
 
             print(f"🎟️ Generated token: {token}")
-            print(f"   Plan: {plan}")
             print(f"   Duration: {duration_hours} hours")
             print(f"   Expires: {expires_at_str}")
 
             payload = {
                 "token": token,
-                "email": email,
+                "email": email,  # USER'S ORIGINAL EMAIL
                 "issue": f"Paid session - {plan} plan",
                 "created_at": now_utc.isoformat(),
-                "expires_at": expires_at_str, # Store the calculated expiry time
+                "expires_at": expires_at_str,
                 "active": True,
-                "plan_type": plan, # Store the plan type
+                "plan_type": plan,
                 "transaction_ref": tx_ref
             }
 
             if supabase_insert_session(payload):
-                print(f"✅ Session created successfully")
+                print(f"✅ Session created for {email}")
                 return jsonify({
                     "status": "successful",
                     "token": token,
-                    "expires_at": expires_at_str, # Return expiry time
-                    "plan": plan # Return plan type
+                    "expires_at": expires_at_str,
+                    "plan": plan,
+                    "email": email  # Return user's email for confirmation
                 }), 200
             else:
-                print(f"❌ Failed to create session in database")
+                print(f"❌ Failed to create session")
                 return jsonify({"status": "failed", "error": "Failed to create session"}), 500
 
         elif payment_status == "pending":
             print(f"⏳ Payment still pending")
             return jsonify({"status": "pending"}), 200
         else:
-            print(f"❌ Payment failed with status: {payment_status}")
+            print(f"❌ Payment failed: {payment_status}")
             return jsonify({"status": "failed"}), 400
 
     except Exception as e:
@@ -1474,6 +1333,123 @@ def verify_payment():
         import traceback
         traceback.print_exc()
         return jsonify({"status": "failed", "error": "Verification error"}), 500
+
+
+
+
+ 
+
+# @app.route('/verify-payment', methods=['POST', 'OPTIONS'])
+# def verify_payment():
+#     """Verify Flutterwave payment and generate token with PROPER duration"""
+#     if request.method == 'OPTIONS':
+#         response = app.make_response('')
+#         response.headers['Access-Control-Allow-Origin'] = 'https://techfix-frontend-nc49.onrender.com'
+#         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+#         response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Accept, Authorization'
+#         return response, 200
+#     try:
+#         data = request.get_json()
+#         if not data:
+#             return jsonify({"error": "Invalid request"}), 400
+#         tx_ref = data.get('tx_ref')
+#         if not tx_ref:
+#             return jsonify({"error": "Transaction reference required"}), 400
+
+#         print(f"🔍 Verifying payment: {tx_ref}")
+#         headers = {
+#             "Authorization": f"Bearer {os.getenv('FLUTTERWAVE_SECRET_KEY')}"
+#         }
+#         response = requests.get(
+#             f"https://api.flutterwave.com/v3/transactions/verify_by_reference?tx_ref={tx_ref}",
+#             headers=headers,
+#             timeout=15
+#         )
+#         print(f"📥 Flutterwave verify status: {response.status_code}")
+#         if response.status_code != 200:
+#             print(f"❌ Flutterwave error: {response.text}")
+#             return jsonify({"status": "failed", "error": "Verification failed"}), 400
+
+#         verification_data = response.json()
+#         print(f"📦 Verification data: {verification_data}")
+#         if verification_data.get("status") != "success":
+#             return jsonify({"status": "failed"}), 400
+
+#         transaction = verification_data.get("data", {})
+#         payment_status = transaction.get("status")
+#         print(f"💳 Payment status: {payment_status}")
+
+#         if payment_status == "successful":
+#             customer = transaction.get("customer", {})
+#             meta = transaction.get("meta", {})
+#             email = customer.get("email") or meta.get("email")
+#             plan = meta.get("plan", "basic") # Get plan from meta
+#             print(f"✅ Payment successful for {email}, plan: {plan}")
+
+#             if not email:
+#                 return jsonify({"status": "failed", "error": "Email not found"}), 400
+
+#             # Deactivate old sessions
+#             try:
+#                 deactivate_url = f"{SUPABASE_URL}/rest/v1/sessions?email=eq.{email}"
+#                 requests.patch(deactivate_url, headers=HEADERS, json={"active": False}, timeout=10)
+#                 print(f"🗑️ Deactivated old sessions for {email}")
+#             except Exception as e:
+#                 print(f"⚠️ Could not deactivate old sessions: {e}")
+
+#             # Generate token with PROPER duration based on plan
+#             raw_token = str(uuid.uuid4())[:8].upper()
+#             token = f"{raw_token[:4]}-{raw_token[4:]}"
+#             plan_durations = {
+#                 'basic': 24,      # 24 hours
+#                 'bundle': 168,    # 7 days
+#                 'pro': 720        # 30 days
+#             }
+#             duration_hours = plan_durations.get(plan, 24) # Use plan to get duration
+#             now_utc = datetime.now(timezone.utc)
+#             expires_at = now_utc + timedelta(hours=duration_hours)
+#             expires_at_str = expires_at.isoformat() # Format expiry time
+
+#             print(f"🎟️ Generated token: {token}")
+#             print(f"   Plan: {plan}")
+#             print(f"   Duration: {duration_hours} hours")
+#             print(f"   Expires: {expires_at_str}")
+
+#             payload = {
+#                 "token": token,
+#                 "email": email,
+#                 "issue": f"Paid session - {plan} plan",
+#                 "created_at": now_utc.isoformat(),
+#                 "expires_at": expires_at_str, # Store the calculated expiry time
+#                 "active": True,
+#                 "plan_type": plan, # Store the plan type
+#                 "transaction_ref": tx_ref
+#             }
+
+#             if supabase_insert_session(payload):
+#                 print(f"✅ Session created successfully")
+#                 return jsonify({
+#                     "status": "successful",
+#                     "token": token,
+#                     "expires_at": expires_at_str, # Return expiry time
+#                     "plan": plan # Return plan type
+#                 }), 200
+#             else:
+#                 print(f"❌ Failed to create session in database")
+#                 return jsonify({"status": "failed", "error": "Failed to create session"}), 500
+
+#         elif payment_status == "pending":
+#             print(f"⏳ Payment still pending")
+#             return jsonify({"status": "pending"}), 200
+#         else:
+#             print(f"❌ Payment failed with status: {payment_status}")
+#             return jsonify({"status": "failed"}), 400
+
+#     except Exception as e:
+#         print(f"💥 Verify payment exception: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return jsonify({"status": "failed", "error": "Verification error"}), 500
 
 
 

@@ -665,7 +665,7 @@ def download_agent(platform):
     # Map platforms to their actual download URLs
     download_urls = {
         'linux': 'https://github.com/Boluex/techfix-frontend/releases/download/1.0/TechFIx.Agent.zip',
-        'windows': 'https://github.com/Boluex/techfix-frontend/releases/download/v1.0.0/TechFix_Agent_Windows.zip',  
+        'windows': 'https://github.com/Boluex/techfix-frontend/releases/download/2.3/TechFixAgent.zip',  
         
     }
     

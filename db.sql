@@ -64,37 +64,37 @@ CREATE INDEX idx_analytics_email ON analytics(email);
 -- ============================================
 
 -- For sessions table
-ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Enable read access for all users" 
-ON sessions FOR SELECT 
-USING (true);
+-- CREATE POLICY "Enable read access for all users" 
+-- ON sessions FOR SELECT 
+-- USING (true);
 
-CREATE POLICY "Enable insert for authenticated users" 
-ON sessions FOR INSERT 
-WITH CHECK (true);
+-- CREATE POLICY "Enable insert for authenticated users" 
+-- ON sessions FOR INSERT 
+-- WITH CHECK (true);
 
-CREATE POLICY "Enable update for authenticated users" 
-ON sessions FOR UPDATE 
-USING (true);
+-- CREATE POLICY "Enable update for authenticated users" 
+-- ON sessions FOR UPDATE 
+-- USING (true);
 
--- For notifications table
-ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+-- -- For notifications table
+-- ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Enable read access for all users" 
-ON notifications FOR SELECT 
-USING (true);
+-- CREATE POLICY "Enable read access for all users" 
+-- ON notifications FOR SELECT 
+-- USING (true);
 
--- For analytics table
-ALTER TABLE analytics ENABLE ROW LEVEL SECURITY;
+-- -- For analytics table
+-- ALTER TABLE analytics ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Enable insert for authenticated users" 
-ON analytics FOR INSERT 
-WITH CHECK (true);
+-- CREATE POLICY "Enable insert for authenticated users" 
+-- ON analytics FOR INSERT 
+-- WITH CHECK (true);
 
-CREATE POLICY "Enable read access for all users" 
-ON analytics FOR SELECT 
-USING (true);
+-- CREATE POLICY "Enable read access for all users" 
+-- ON analytics FOR SELECT 
+-- USING (true);
 
 -- ============================================
 -- CLEANUP FUNCTION (Auto-delete old sessions)

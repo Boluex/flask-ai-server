@@ -31,6 +31,7 @@ MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 TECHNICIAN_EMAIL = os.getenv("TECHNICIAN_EMAIL")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 ANALYTICS_API_KEY = "6G4xjZrP7IebKXnVvNQwphH0VvQdXqv9nTjKFXLae+M="
+PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
 
 resend.api_key = RESEND_API_KEY
 
@@ -966,8 +967,7 @@ def download_agent(platform):
 
 
 
-# Add this at the top with your other imports
-PAYSTACK_SECRET_KEY = os.getenv("PAYSTACK_SECRET_KEY")
+
 
 # ============= PAYSTACK PAYMENT ENDPOINTS =============
 # Replace your existing /create-checkout-session endpoint with this:
@@ -1211,6 +1211,146 @@ def verify_payment():
             "error": str(e)
         }), 500
 
+
+
+
+
+@app.route('/paystack-webhook', methods=['POST'])
+def paystack_webhook():
+    """
+    Handle Paystack webhook events for automatic payment processing
+    This is called by Paystack directly when payment succeeds
+    """
+    
+    # Step 1: Verify webhook signature (SECURITY - prevents fake requests)
+    signature = request.headers.get('x-paystack-signature')
+    
+    if not signature:
+        print("⚠️ Webhook received without signature")
+        return jsonify({"error": "No signature"}), 400
+    
+    # Compute hash to verify request is really from Paystack
+    secret = PAYSTACK_SECRET_KEY
+    computed_signature = hmac.new(
+        secret.encode('utf-8'),
+        request.get_data(),
+        hashlib.sha512
+    ).hexdigest()
+    
+    if signature != computed_signature:
+        print(f"⚠️ Invalid webhook signature from {get_client_ip()}")
+        return jsonify({"error": "Invalid signature"}), 401
+    
+    # Step 2: Process the event
+    try:
+        event = request.get_json()
+        event_type = event.get("event")
+        
+        print(f"\n{'='*60}")
+        print(f"🔔 PAYSTACK WEBHOOK")
+        print(f"   Event: {event_type}")
+        print(f"{'='*60}")
+        
+        # We only care about successful charges
+        if event_type == "charge.success":
+            data = event.get("data", {})
+            
+            if data.get("status") == "success":
+                # Extract payment details
+                metadata = data.get("metadata", {})
+                customer = data.get("customer", {})
+                
+                email = metadata.get("user_email") or customer.get("email")
+                plan = metadata.get("plan", "basic")
+                reference = data.get("reference")
+                amount = data.get("amount", 0) / 100  # Convert from kobo to dollars
+                
+                print(f"💳 Payment Details:")
+                print(f"   Email: {email}")
+                print(f"   Plan: {plan}")
+                print(f"   Amount: ${amount}")
+                print(f"   Reference: {reference}")
+                
+                if not email:
+                    print(f"❌ No email found in webhook data")
+                    return jsonify({"error": "Email not found"}), 400
+                
+                # Check if token already exists for this transaction
+                try:
+                    check_existing = requests.get(
+                        f"{SUPABASE_URL}/rest/v1/sessions?transaction_ref=eq.{reference}",
+                        headers=HEADERS,
+                        timeout=10
+                    )
+                    
+                    if check_existing.status_code == 200 and check_existing.json():
+                        print(f"ℹ️ Token already generated for {reference}")
+                        return jsonify({"status": "already_processed"}), 200
+                except:
+                    pass
+                
+                # Deactivate old sessions
+                try:
+                    requests.patch(
+                        f"{SUPABASE_URL}/rest/v1/sessions?email=eq.{email}",
+                        headers=HEADERS,
+                        json={"active": False},
+                        timeout=10
+                    )
+                    print(f"🗑️ Deactivated old sessions")
+                except Exception as e:
+                    print(f"⚠️ Could not deactivate old sessions: {e}")
+                
+                # Generate token
+                raw_token = str(uuid.uuid4())[:8].upper()
+                token = f"{raw_token[:4]}-{raw_token[4:]}"
+                
+                plan_durations = {
+                    'basic': 24,
+                    'bundle': 168,
+                    'pro': 720
+                }
+                duration_hours = plan_durations.get(plan, 24)
+                
+                now_utc = datetime.now(timezone.utc)
+                expires_at = now_utc + timedelta(hours=duration_hours)
+                
+                print(f"🎟️ Generating token: {token}")
+                
+                # Save to database
+                session_payload = {
+                    "token": token,
+                    "email": email,
+                    "issue": f"Paid session - {plan} plan (webhook)",
+                    "created_at": now_utc.isoformat(),
+                    "expires_at": expires_at.isoformat(),
+                    "active": True,
+                    "plan_type": plan,
+                    "transaction_ref": reference
+                }
+                
+                if supabase_insert_session(session_payload):
+                    print(f"✅ Token generated via webhook: {token}")
+                    print(f"   User will receive token via website popup after redirect")
+                    print(f"{'='*60}\n")
+                    
+                    return jsonify({
+                        "status": "success",
+                        "message": "Token generated"
+                    }), 200
+                else:
+                    print(f"❌ Failed to save session")
+                    return jsonify({"error": "Failed to create session"}), 500
+        
+        # Acknowledge other events
+        print(f"ℹ️ Event '{event_type}' acknowledged")
+        return jsonify({"status": "received"}), 200
+        
+    except Exception as e:
+        print(f"💥 Webhook error: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 # ===============================================================================================================================================================
